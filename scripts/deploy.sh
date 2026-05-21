@@ -260,6 +260,10 @@ PYEOF
 }
 
 # ── Execute ──────────────────────────────────────────────────────────────────
+# Shared provider cache — populated on first network run, reused offline after
+export TF_PLUGIN_CACHE_DIR="${HOME}/.terraform.d/plugin-cache"
+mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 FAILED_COMBOS=()
@@ -290,7 +294,8 @@ for env in "${SELECTED_ENVS[@]}"; do
       TF_VARS+=("-var=project_id=$GCP_PROJECT_ID")
     fi
 
-    terraform init -input=false -no-color
+    terraform init -input=false -no-color -upgrade=false -lockfile=readonly \
+      || terraform init -input=false -no-color -upgrade=false
     rc=0
     _did_apply=false
     case "$ACTION" in
