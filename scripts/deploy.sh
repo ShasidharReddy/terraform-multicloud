@@ -294,7 +294,8 @@ for env in "${SELECTED_ENVS[@]}"; do
       TF_VARS+=("-var=project_id=$GCP_PROJECT_ID")
     fi
 
-    terraform init -input=false -no-color -upgrade=false -lockfile=readonly \
+    terraform init -input=false -no-color -upgrade=false \
+      -plugin-dir="${HOME}/.terraform.d/plugin-cache" \
       || terraform init -input=false -no-color -upgrade=false
     rc=0
     _did_apply=false
