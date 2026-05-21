@@ -303,11 +303,18 @@ for env in "${SELECTED_ENVS[@]}"; do
       plan)
         terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
         if (( rc == 0 )); then
-          _apply_now=""
-          prompt_yesno _apply_now "  ✅ Plan succeeded — apply now?" n
-          if [[ "$_apply_now" == "true" ]]; then
+          # Flush any buffered TTY input, then block for real user answer
+          while IFS= read -r -t 0.05 _fl </dev/tty 2>/dev/null; do :; done
+          tty_out "\n${GREEN}${BOLD}  ✅ Plan succeeded — apply now?${RESET} ${YELLOW}[y/N]:${RESET} "
+          _r=""
+          IFS= read -r _r </dev/tty || true
+          _r="$(printf '%s' "${_r:-n}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [[ "$_r" == "y" || "$_r" == "yes" ]]; then
+            tty_out "${CYAN}  → Applying...${RESET}\n"
             terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
             _did_apply=true
+          else
+            tty_out "${YELLOW}  → Skipped apply.${RESET}\n"
           fi
         fi
         ;;
