@@ -41,3 +41,20 @@
 - Resources: VPC/VNet, Compute VMs, PostgreSQL Database, Object Storage
 - Interactive deployment script with multi-select
 - VM count scaling (1-10)
+
+## [v1.0.3] - 2026-05-21
+
+### Added
+- `Jenkinsfile`: Full declarative Jenkins pipeline with parameterized builds, tfsec, SonarQube, approval gates for stage/prod, and auto-tagging
+- `sonar-project.properties`: SonarQube project configuration for Terraform code quality analysis
+- `.pre-commit-config.yaml`: Pre-commit hooks (terraform_fmt, terraform_validate, tfsec, checkov, shellcheck)
+- `scripts/bump-version.sh`: Semantic version bump script (patch/minor/major)
+- `scripts/ci-check.sh`: Local CI runner (fmt + validate + tfsec + checkov)
+- `versions/VERSION`: Machine-readable version file
+- Makefile: Expanded with 18 targets including `all-checks`, `tfsec`, `checkov`, `sonar`, `tag-patch`, `tag-minor`, `tag-major`, `pre-commit-install`, `docs`, `clean`
+
+### Changed
+- Re-tagged version history to patch versioning: v1.1.0 → v1.0.1, v1.2.0 → v1.0.2
+
+### Fixed
+- Verified the v1.0.2 audit checklist with no additional code defects remaining

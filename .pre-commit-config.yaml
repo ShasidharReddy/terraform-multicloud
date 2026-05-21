@@ -1,0 +1,66 @@
+# Pre-commit hooks for Terraform quality gates
+# Install: pip install pre-commit && pre-commit install
+# Run all: pre-commit run --all-files
+
+repos:
+  # Terraform hooks
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.1
+    hooks:
+      - id: terraform_fmt
+        name: Terraform Format
+        description: Rewrites all Terraform configuration files to canonical format
+      - id: terraform_validate
+        name: Terraform Validate
+        description: Validates all Terraform configuration files
+        args:
+          - --init-args=-backend=false
+      - id: terraform_tfsec
+        name: tfsec Security Scan
+        description: Runs tfsec security scanner on Terraform code
+        args:
+          - --args=--minimum-severity MEDIUM --no-color
+      - id: terraform_checkov
+        name: Checkov IaC Security
+        description: Runs Checkov to find security misconfigurations
+        args:
+          - --args=--quiet --compact --framework terraform
+
+  # General file quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-json
+        name: Check JSON syntax
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: detect-private-key
+        name: Detect private keys
+        description: Prevents committing private keys
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1024']
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: ShellCheck
+        description: Lints shell scripts
+        args: [-e, SC1091, -e, SC2034]
+
+  - repo: local
+    hooks:
+      - id: ci-check
+        name: CI check summary
+        entry: bash scripts/ci-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true
