@@ -1,14 +1,19 @@
+locals {
+  db_fqdn_value = (
+    local.is_postgresql ? azurerm_postgresql_flexible_server.this[0].fqdn :
+    local.is_mysql ? azurerm_mysql_flexible_server.this[0].fqdn :
+    azurerm_mssql_server.this[0].fully_qualified_domain_name
+  )
+}
+
 output "db_fqdn" {
-  description = "PostgreSQL Flexible Server FQDN."
-  value       = azurerm_postgresql_flexible_server.this.fqdn
+  value = local.db_fqdn_value
 }
 
 output "db_name" {
-  description = "Database name."
-  value       = azurerm_postgresql_flexible_server_database.this.name
+  value = var.db_name
 }
 
-output "db_id" {
-  description = "Database server identifier."
-  value       = azurerm_postgresql_flexible_server.this.id
+output "engine" {
+  value = var.engine
 }

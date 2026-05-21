@@ -62,6 +62,15 @@ resource "google_compute_router_nat" "this" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
+resource "google_compute_route" "default_internet" {
+  name             = "${var.project}-${var.environment}-default-internet"
+  project          = var.project_id
+  network          = google_compute_network.this.name
+  dest_range       = "0.0.0.0/0"
+  priority         = 1000
+  next_hop_gateway = "default-internet-gateway"
+}
+
 resource "google_compute_firewall" "internal" {
   name    = "${var.project}-${var.environment}-allow-internal"
   network = google_compute_network.this.name
@@ -93,5 +102,30 @@ resource "google_compute_firewall" "ssh" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["ssh"]
+}
+
+resource "google_compute_firewall" "http" {
+  name    = "${var.project}-${var.environment}-allow-http"
+  network = google_compute_network.this.name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+resource "google_compute_firewall" "https" {
+  name    = "${var.project}-${var.environment}-allow-https"
+  network = google_compute_network.this.name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
 }

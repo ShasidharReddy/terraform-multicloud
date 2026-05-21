@@ -18,6 +18,17 @@ variable "db_subnet_ids" {
   type        = list(string)
 }
 
+variable "engine" {
+  description = "Database engine: postgresql, mysql, sqlserver-se, aurora-postgresql, aurora-mysql"
+  type        = string
+  default     = "postgresql"
+
+  validation {
+    condition     = contains(["postgresql", "mysql", "sqlserver-se", "aurora-postgresql", "aurora-mysql"], var.engine)
+    error_message = "engine must be one of: postgresql, mysql, sqlserver-se, aurora-postgresql, aurora-mysql"
+  }
+}
+
 variable "db_name" {
   description = "Database name."
   type        = string
@@ -40,9 +51,9 @@ variable "instance_class" {
 }
 
 variable "engine_version" {
-  description = "PostgreSQL engine version."
+  description = "Optional database engine version override."
   type        = string
-  default     = "14.9"
+  default     = null
 }
 
 variable "allocated_storage" {
@@ -56,10 +67,9 @@ variable "multi_az" {
   type        = bool
 }
 
-variable "allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to reach PostgreSQL."
-  type        = list(string)
-  default     = ["10.0.0.0/8"]
+variable "db_security_group_id" {
+  description = "Security group ID for the database."
+  type        = string
 }
 
 variable "tags" {

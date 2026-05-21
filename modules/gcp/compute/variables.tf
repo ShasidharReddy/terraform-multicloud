@@ -39,8 +39,8 @@ variable "vm_count" {
   default     = 2
 
   validation {
-    condition     = var.vm_count >= 1 && var.vm_count <= 10
-    error_message = "vm_count must be between 1 and 10."
+    condition     = var.vm_count >= 1 && var.vm_count <= 50
+    error_message = "vm_count must be between 1 and 50."
   }
 }
 

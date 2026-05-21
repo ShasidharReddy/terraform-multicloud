@@ -19,15 +19,39 @@ output "db_subnet_id" {
 }
 
 output "vm_ids" {
-  value = module.compute.vm_ids
+  value = length(module.compute) > 0 ? module.compute[0].vm_ids : []
 }
 
 output "vm_private_ips" {
-  value = module.compute.private_ips
+  value = length(module.compute) > 0 ? module.compute[0].private_ips : []
+}
+
+output "aks_cluster_name" {
+  value = length(module.aks) > 0 ? module.aks[0].cluster_name : null
+}
+
+output "aks_host" {
+  value = length(module.aks) > 0 ? module.aks[0].host : null
+}
+
+output "aks_kubeconfig_command" {
+  value = length(module.aks) > 0 ? module.aks[0].kubeconfig_command : null
+}
+
+output "bastion_public_ip" {
+  value = length(module.bastion) > 0 ? module.bastion[0].bastion_public_ip : null
+}
+
+output "bastion_ssh_command" {
+  value = length(module.bastion) > 0 ? module.bastion[0].ssh_command : null
 }
 
 output "db_fqdn" {
   value = module.database.db_fqdn
+}
+
+output "db_engine" {
+  value = module.database.engine
 }
 
 output "storage_account_name" {

@@ -61,7 +61,7 @@ resource "aws_instance" "this" {
   ami                         = coalesce(var.ami_id, data.aws_ami.amazon_linux.id)
   instance_type               = var.instance_type
   subnet_id                   = var.private_subnet_ids[count.index % length(var.private_subnet_ids)]
-  vpc_security_group_ids      = [aws_security_group.this.id]
+  vpc_security_group_ids      = concat([aws_security_group.this.id], var.additional_security_group_ids)
   associate_public_ip_address = false
   key_name                    = local.effective_key_name
 

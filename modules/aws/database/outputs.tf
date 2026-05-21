@@ -1,14 +1,19 @@
 output "db_endpoint" {
-  description = "RDS endpoint."
-  value       = aws_db_instance.this.address
+  value = length(aws_db_instance.this) > 0 ? aws_db_instance.this[0].endpoint : aws_rds_cluster.aurora[0].endpoint
+}
+
+output "db_reader_endpoint" {
+  value = length(aws_rds_cluster.aurora) > 0 ? aws_rds_cluster.aurora[0].reader_endpoint : null
 }
 
 output "db_port" {
-  description = "RDS port."
-  value       = aws_db_instance.this.port
+  value = length(aws_db_instance.this) > 0 ? aws_db_instance.this[0].port : aws_rds_cluster.aurora[0].port
 }
 
 output "db_name" {
-  description = "Database name."
-  value       = aws_db_instance.this.db_name
+  value = var.db_name
+}
+
+output "engine" {
+  value = var.engine
 }

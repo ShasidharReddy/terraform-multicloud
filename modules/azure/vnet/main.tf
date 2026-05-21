@@ -84,6 +84,19 @@ resource "azurerm_network_security_group" "db" {
   tags                = var.tags
 }
 
+resource "azurerm_route_table" "public" {
+  name                = "${local.name_prefix}-public-rt"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = var.tags
+
+  route {
+    name           = "default-internet"
+    address_prefix = "0.0.0.0/0"
+    next_hop_type  = "Internet"
+  }
+}
+
 resource "azurerm_subnet_network_security_group_association" "public" {
   subnet_id                 = azurerm_subnet.public.id
   network_security_group_id = azurerm_network_security_group.public.id
@@ -97,4 +110,9 @@ resource "azurerm_subnet_network_security_group_association" "private" {
 resource "azurerm_subnet_network_security_group_association" "db" {
   subnet_id                 = azurerm_subnet.db.id
   network_security_group_id = azurerm_network_security_group.db.id
+}
+
+resource "azurerm_subnet_route_table_association" "public" {
+  subnet_id      = azurerm_subnet.public.id
+  route_table_id = azurerm_route_table.public.id
 }

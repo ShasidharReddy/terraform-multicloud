@@ -1,11 +1,19 @@
-# Local state is used by default.
-# Uncomment and customize the block below to use S3 remote state.
+# Local backend (default - no state locking)
+# To use remote backend with locking, replace this block with the appropriate
+# template from backend-configs/ directory, then run: terraform init -migrate-state
+terraform {
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+# ── AWS REMOTE BACKEND (uncomment and fill values after running bootstrap-backend.sh) ──
 # terraform {
 #   backend "s3" {
-#     bucket         = "my-terraform-state-bucket"
+#     bucket         = "your-tfstate-bucket-name"
 #     key            = "prod/aws/terraform.tfstate"
-#     region         = "us-west-2"
+#     region         = "us-east-1"
+#     dynamodb_table = "your-tfstate-lock-table"
 #     encrypt        = true
-#     dynamodb_table = "terraform-locks"
 #   }
 # }

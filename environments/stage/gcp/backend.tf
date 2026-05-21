@@ -1,8 +1,16 @@
-# Local state is used by default.
-# Uncomment and customize the block below to use GCS remote state.
+# Local backend (default - no state locking)
+# To use remote backend with locking, replace this block with the appropriate
+# template from backend-configs/ directory, then run: terraform init -migrate-state
+terraform {
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+# ── GCP REMOTE BACKEND (uncomment and fill values after running bootstrap-backend.sh) ──
 # terraform {
 #   backend "gcs" {
-#     bucket = "my-terraform-state-bucket"
-#     prefix = "stage/gcp"
+#     bucket = "your-tfstate-bucket-name"
+#     prefix = "stage/gcp/terraform.tfstate"
 #   }
 # }

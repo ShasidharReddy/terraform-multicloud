@@ -24,8 +24,8 @@ variable "vm_count" {
   default     = 2
 
   validation {
-    condition     = var.vm_count >= 1 && var.vm_count <= 10
-    error_message = "vm_count must be between 1 and 10."
+    condition     = var.vm_count >= 1 && var.vm_count <= 50
+    error_message = "vm_count must be between 1 and 50."
   }
 }
 
@@ -50,6 +50,12 @@ variable "public_key" {
   description = "Optional public key content used when creating a key pair."
   type        = string
   default     = null
+}
+
+variable "additional_security_group_ids" {
+  description = "Additional security group identifiers to attach to compute instances."
+  type        = list(string)
+  default     = []
 }
 
 variable "tags" {

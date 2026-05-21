@@ -18,6 +18,17 @@ variable "region" {
   type        = string
 }
 
+variable "engine" {
+  description = "Database engine: postgresql, mysql, sqlserver"
+  type        = string
+  default     = "postgresql"
+
+  validation {
+    condition     = contains(["postgresql", "mysql", "sqlserver"], var.engine)
+    error_message = "engine must be one of: postgresql, mysql, sqlserver"
+  }
+}
+
 variable "db_name" {
   description = "Cloud SQL database name."
   type        = string
@@ -41,15 +52,20 @@ variable "tier" {
 }
 
 variable "database_version" {
-  description = "Cloud SQL PostgreSQL version."
+  description = "Optional Cloud SQL version override."
   type        = string
-  default     = "POSTGRES_14"
+  default     = null
 }
 
 variable "disk_size" {
   description = "Cloud SQL disk size in GB."
   type        = number
   default     = 20
+}
+
+variable "private_network_id" {
+  description = "Private VPC network self link for Cloud SQL private service access."
+  type        = string
 }
 
 variable "tags" {
