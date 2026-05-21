@@ -169,6 +169,49 @@ done
 CONFIRM=""; prompt_yesno CONFIRM "Proceed? [Y/n]:" y
 [[ "$CONFIRM" == "true" ]] || { tty_out "${YELLOW}Cancelled.${RESET}\n"; exit 0; }
 
+# ── Cloud authentication pre-flight checks ───────────────────────────────────
+check_gcp_auth() {
+  [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]] && return 0
+  [[ -n "${GOOGLE_CREDENTIALS:-}" ]]             && return 0
+  if gcloud auth application-default print-access-token &>/dev/null 2>&1; then
+    return 0
+  fi
+  tty_out "\n${RED}${BOLD}❌  GCP Authentication not configured!${RESET}\n"
+  tty_out "${YELLOW}Terraform could not find Application Default Credentials (ADC).${RESET}\n"
+  tty_out "${YELLOW}Without credentials, every API call times out after ~20 minutes.${RESET}\n\n"
+  tty_out "${BOLD}Fix — choose one option:${RESET}\n\n"
+  tty_out "${CYAN}  Option 1 — User credentials (recommended for local dev):${RESET}\n"
+  tty_out "    gcloud auth application-default login\n\n"
+  tty_out "${CYAN}  Option 2 — Service account key file:${RESET}\n"
+  tty_out "    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json\n"
+  tty_out "    ./scripts/deploy.sh\n\n"
+  tty_out "${CYAN}  Option 3 — Use existing gcloud account (%s):${RESET}\n" "$(gcloud config get-value account 2>/dev/null)"
+  tty_out "    gcloud auth application-default login --account \$(gcloud config get-value account)\n\n"
+  tty_out "${YELLOW}After authenticating, re-run ./scripts/deploy.sh${RESET}\n\n"
+  return 1
+}
+
+# Run cloud-specific auth checks before spending time on terraform
+for _cloud in "${SELECTED_CLOUDS[@]}"; do
+  case "$_cloud" in
+    gcp)
+      check_gcp_auth || exit 1
+      ;;
+    aws)
+      if ! aws sts get-caller-identity &>/dev/null 2>&1; then
+        tty_out "\n${YELLOW}⚠️   AWS credentials not detected. Ensure AWS_PROFILE or AWS_ACCESS_KEY_ID is set.${RESET}\n"
+        tty_out "${YELLOW}    Run: aws configure  OR  export AWS_PROFILE=<profile>${RESET}\n\n"
+      fi
+      ;;
+    azure)
+      if ! az account show &>/dev/null 2>&1; then
+        tty_out "\n${YELLOW}⚠️   Azure credentials not detected.${RESET}\n"
+        tty_out "${YELLOW}    Run: az login${RESET}\n\n"
+      fi
+      ;;
+  esac
+done
+
 # ── Post-apply resource summary ─────────────────────────────────────────────
 show_deployment_summary() {
   local label="$1"
