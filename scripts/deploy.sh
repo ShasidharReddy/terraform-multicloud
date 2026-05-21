@@ -315,6 +315,9 @@ for env in "${SELECTED_ENVS[@]}"; do
             _did_apply=true
           else
             tty_out "${YELLOW}  → Skipped apply.${RESET}\n"
+            tty_out "${YELLOW}  Plan saved at: ${BOLD}%s/tfplan${RESET}\n" "$ENV_DIR"
+            tty_out "${YELLOW}  To apply later run:${RESET}\n"
+            tty_out "${CYAN}    cd %s && terraform apply tfplan${RESET}\n" "$ENV_DIR"
           fi
         fi
         ;;
