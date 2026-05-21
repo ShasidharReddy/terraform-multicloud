@@ -1,0 +1,17 @@
+project            = "terraform-multicloud"
+environment        = "qa"
+region             = "us-east-1"
+vpc_cidr           = "10.20.0.0/16"
+vm_count           = 2
+instance_type      = "t3.small"
+ami_id             = null
+key_name           = null
+public_key         = null
+db_name            = "qaappdb"
+db_username        = "pgadmin"
+db_password        = "ChangeMe123!"
+db_instance_class  = "db.t3.micro"
+db_engine_version  = "14.9"
+allocated_storage  = 20
+multi_az           = false
+bucket_name_suffix = "qa-aws"

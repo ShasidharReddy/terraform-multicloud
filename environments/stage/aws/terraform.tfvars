@@ -1,0 +1,17 @@
+project            = "terraform-multicloud"
+environment        = "stage"
+region             = "us-east-2"
+vpc_cidr           = "10.30.0.0/16"
+vm_count           = 3
+instance_type      = "t3.medium"
+ami_id             = null
+key_name           = null
+public_key         = null
+db_name            = "stageappdb"
+db_username        = "pgadmin"
+db_password        = "ChangeMe123!"
+db_instance_class  = "db.t3.small"
+db_engine_version  = "14.9"
+allocated_storage  = 50
+multi_az           = true
+bucket_name_suffix = "stage-aws"

@@ -1,0 +1,17 @@
+project            = "terraform-multicloud"
+environment        = "prod"
+region             = "us-west-2"
+vpc_cidr           = "10.40.0.0/16"
+vm_count           = 5
+instance_type      = "t3.large"
+ami_id             = null
+key_name           = null
+public_key         = null
+db_name            = "prodappdb"
+db_username        = "pgadmin"
+db_password        = "ChangeMe123!"
+db_instance_class  = "db.t3.medium"
+db_engine_version  = "14.9"
+allocated_storage  = 100
+multi_az           = true
+bucket_name_suffix = "prod-aws"
