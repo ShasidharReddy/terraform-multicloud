@@ -23,6 +23,8 @@ FAILED_COMBINATIONS=()
 ACTION=""
 COMPUTE_MODE="vm"
 DB_ENGINE_CHOICE="postgresql"
+ENABLE_DATABASE="true"
+ENABLE_REDIS="false"
 NODE_COUNT=2
 
 log() {
@@ -209,6 +211,24 @@ prompt_vm_counts() {
   done
 }
 
+prompt_enable_database() {
+  printf "%b" "${YELLOW}Deploy database? [Y/n]:${RESET} "
+  read -r input
+  case "$input" in
+    n|N|no|NO|No) ENABLE_DATABASE="false" ;;
+    *) ENABLE_DATABASE="true" ;;
+  esac
+}
+
+prompt_enable_redis() {
+  printf "%b" "${YELLOW}Deploy Redis cache? [y/N]:${RESET} "
+  read -r input
+  case "$input" in
+    y|Y|yes|YES|Yes) ENABLE_REDIS="true" ;;
+    *) ENABLE_REDIS="false" ;;
+  esac
+}
+
 prompt_node_count() {
   local input
   while true; do
@@ -265,7 +285,9 @@ show_summary() {
   log "  Clouds       : $(join_by ', ' "${SELECTED_CLOUDS[@]}")"
   log "  Action       : $ACTION"
   log "  Compute      : $COMPUTE_MODE"
-  log "  DB Engine    : $DB_ENGINE_CHOICE"
+  log "  Database     : $ENABLE_DATABASE"
+  log "  DB Engine    : $([ "$ENABLE_DATABASE" = "true" ] && printf "%s" "$DB_ENGINE_CHOICE" || printf "n/a")"
+  log "  Redis        : $ENABLE_REDIS"
   if [ "$COMPUTE_MODE" != "kubernetes" ]; then
     log "  VM Count     : $(join_by ', ' "${vm_items[@]}")"
   fi
@@ -309,6 +331,8 @@ run_terraform() {
   esac
 
   args+=("-var=compute_type=$compute_type" "-var=use_kubernetes=$use_kubernetes" "-var=db_engine=$db_engine")
+  args+=("-var=enable_database=$ENABLE_DATABASE")
+  args+=("-var=enable_redis=$ENABLE_REDIS")
   if [ "$COMPUTE_MODE" != "kubernetes" ]; then
     args+=("-var=vm_count=$vm_count")
   fi
@@ -353,15 +377,19 @@ main() {
     "Both") COMPUTE_MODE="both" ;;
   esac
 
-  prompt_single_choice db_choice "Select database engine" "${db_prompt[@]}"
-  case "$db_choice" in
-    "PostgreSQL") DB_ENGINE_CHOICE="postgresql" ;;
-    "MySQL") DB_ENGINE_CHOICE="mysql" ;;
-    "SQL Server") DB_ENGINE_CHOICE="sqlserver" ;;
-    "Aurora PostgreSQL (AWS only)") DB_ENGINE_CHOICE="aurora-postgresql" ;;
-    "Aurora MySQL (AWS only)") DB_ENGINE_CHOICE="aurora-mysql" ;;
-  esac
-  validate_engine_clouds
+  prompt_enable_database
+  if [ "$ENABLE_DATABASE" = "true" ]; then
+    prompt_single_choice db_choice "Select database engine" "${db_prompt[@]}"
+    case "$db_choice" in
+      "PostgreSQL") DB_ENGINE_CHOICE="postgresql" ;;
+      "MySQL") DB_ENGINE_CHOICE="mysql" ;;
+      "SQL Server") DB_ENGINE_CHOICE="sqlserver" ;;
+      "Aurora PostgreSQL (AWS only)") DB_ENGINE_CHOICE="aurora-postgresql" ;;
+      "Aurora MySQL (AWS only)") DB_ENGINE_CHOICE="aurora-mysql" ;;
+    esac
+    validate_engine_clouds
+  fi
+  prompt_enable_redis
 
   if [ "$COMPUTE_MODE" != "vm" ]; then
     prompt_node_count

@@ -43,19 +43,27 @@ output "bastion_ssh_command" {
 }
 
 output "db_endpoint" {
-  value = module.database.db_endpoint
+  value = length(module.database) > 0 ? module.database[0].db_endpoint : null
 }
 
 output "db_reader_endpoint" {
-  value = module.database.db_reader_endpoint
+  value = length(module.database) > 0 ? module.database[0].db_reader_endpoint : null
 }
 
 output "db_port" {
-  value = module.database.db_port
+  value = length(module.database) > 0 ? module.database[0].db_port : null
 }
 
 output "db_engine" {
-  value = module.database.engine
+  value = length(module.database) > 0 ? module.database[0].engine : null
+}
+
+output "redis_endpoint" {
+  value = length(module.redis) > 0 ? module.redis[0].redis_endpoint : null
+}
+
+output "redis_port" {
+  value = length(module.redis) > 0 ? module.redis[0].redis_port : null
 }
 
 output "bucket_id" {

@@ -18,6 +18,11 @@ output "private_subnet_id" {
   value       = google_compute_subnetwork.private.id
 }
 
+output "private_subnet_self_link" {
+  description = "Private subnetwork self link (for GKE)."
+  value       = google_compute_subnetwork.private.self_link
+}
+
 output "db_subnet_id" {
   description = "Database subnetwork identifier."
   value       = google_compute_subnetwork.db.id

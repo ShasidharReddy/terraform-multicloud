@@ -60,6 +60,18 @@ variable "compute_type" {
   }
 }
 
+variable "enable_database" {
+  description = "Deploy database resources. Set to false to skip database deployment."
+  type        = bool
+  default     = true
+}
+
+variable "enable_redis" {
+  description = "Deploy Redis cache resources."
+  type        = bool
+  default     = false
+}
+
 variable "create_bastion" {
   description = "Create a bastion host for SSH access."
   type        = bool
@@ -219,6 +231,18 @@ variable "db_disk_size" {
   description = "Cloud SQL disk size in GB."
   type        = number
   default     = 20
+}
+
+variable "redis_memory_size_gb" {
+  description = "Redis memory size in GB."
+  type        = number
+  default     = 1
+}
+
+variable "redis_version" {
+  description = "GCP Redis version string."
+  type        = string
+  default     = "REDIS_7_0"
 }
 
 variable "bucket_name_suffix" {

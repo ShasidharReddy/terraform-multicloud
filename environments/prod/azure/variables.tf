@@ -40,6 +40,18 @@ variable "compute_type" {
   }
 }
 
+variable "enable_database" {
+  description = "Deploy database resources. Set to false to skip database deployment."
+  type        = bool
+  default     = true
+}
+
+variable "enable_redis" {
+  description = "Deploy Redis cache resources."
+  type        = bool
+  default     = false
+}
+
 variable "create_bastion" {
   description = "Create a bastion host for SSH access."
   type        = bool
@@ -209,6 +221,12 @@ variable "mssql_sku" {
   description = "Azure SQL Database SKU name."
   type        = string
   default     = "Basic"
+}
+
+variable "redis_version" {
+  description = "Azure Redis major version (6 or 7)."
+  type        = number
+  default     = 7
 }
 
 variable "account_tier" {

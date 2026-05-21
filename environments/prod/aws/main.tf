@@ -100,6 +100,7 @@ module "eks" {
 }
 
 module "database" {
+  count                = var.enable_database ? 1 : 0
   source               = "../../../modules/aws/database"
   project              = var.project
   environment          = var.environment
@@ -115,6 +116,19 @@ module "database" {
   multi_az             = var.multi_az
   db_security_group_id = module.security_groups.db_sg_id
   tags                 = local.common_tags
+}
+
+module "redis" {
+  count               = var.enable_redis ? 1 : 0
+  source              = "../../../modules/aws/redis"
+  project             = var.project
+  environment         = var.environment
+  vpc_id              = module.vpc.vpc_id
+  private_subnet_ids  = module.vpc.private_subnet_ids
+  node_type           = var.redis_node_type
+  engine_version      = var.redis_engine_version
+  allowed_cidr_blocks = [var.vpc_cidr]
+  tags                = local.common_tags
 }
 
 module "storage" {

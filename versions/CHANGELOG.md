@@ -1,5 +1,23 @@
 # Changelog
 
+## [v1.2.0] - 2026-05-21
+### Added
+- Optional database deployment across all AWS, Azure, and GCP environments via `enable_database`
+- Optional Redis deployment across all AWS, Azure, and GCP environments via `enable_redis`
+- Redis modules for AWS ElastiCache, Azure Cache for Redis, and GCP Memorystore
+- Redis outputs across environment stacks and a Redis security group output in the AWS security-groups module
+
+### Changed
+- Updated `scripts/deploy.sh` to prompt for database and Redis deployment choices and pass the new Terraform variables
+- Made environment database and Redis outputs safe when optional modules are disabled
+
+### Fixed
+- GKE now uses the private subnet self link instead of the subnet ID
+- AKS now skips `linux_profile` when no SSH public key is provided
+- Azure PostgreSQL flexible server now supports delegated subnet and private DNS integration
+- GCP Cloud SQL backup configuration now supports MySQL and PostgreSQL correctly
+- AWS security-groups now includes a Redis security group for app-tier access
+
 ## [v1.1.0] - 2026-05-21
 ### Added
 - Kubernetes modules for EKS, AKS, and GKE with node scaling up to 50

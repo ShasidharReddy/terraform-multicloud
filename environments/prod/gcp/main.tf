@@ -78,7 +78,7 @@ module "gke" {
   environment            = var.environment
   region                 = var.region
   network_self_link      = module.vpc.network_self_link
-  subnetwork_self_link   = module.vpc.private_subnet_id
+  subnetwork_self_link   = module.vpc.private_subnet_self_link
   kubernetes_version     = var.kubernetes_version
   machine_type           = var.node_machine_type
   node_count             = var.node_count
@@ -93,6 +93,7 @@ module "gke" {
 }
 
 module "database" {
+  count              = var.enable_database ? 1 : 0
   source             = "../../../modules/gcp/database"
   project_id         = var.project_id
   project            = var.project
@@ -107,6 +108,20 @@ module "database" {
   disk_size          = var.db_disk_size
   private_network_id = module.vpc.network_self_link
   tags               = local.common_tags
+}
+
+module "redis" {
+  count             = var.enable_redis ? 1 : 0
+  source            = "../../../modules/gcp/redis"
+  project_id        = var.project_id
+  project           = var.project
+  environment       = var.environment
+  region            = var.region
+  zone              = var.zone
+  network_self_link = module.vpc.network_self_link
+  memory_size_gb    = var.redis_memory_size_gb
+  redis_version     = var.redis_version
+  tags              = local.common_tags
 }
 
 module "storage" {

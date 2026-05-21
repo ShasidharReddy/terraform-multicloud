@@ -43,15 +43,23 @@ output "bastion_ssh_command" {
 }
 
 output "db_connection_name" {
-  value = module.database.db_connection_name
+  value = length(module.database) > 0 ? module.database[0].db_connection_name : null
+}
+
+output "db_public_ip" {
+  value = length(module.database) > 0 ? module.database[0].db_public_ip : null
 }
 
 output "db_private_ip" {
-  value = module.database.db_private_ip
+  value = length(module.database) > 0 ? module.database[0].db_private_ip : null
 }
 
 output "db_engine" {
-  value = module.database.engine
+  value = length(module.database) > 0 ? module.database[0].engine : null
+}
+
+output "redis_host" {
+  value = length(module.redis) > 0 ? module.redis[0].redis_host : null
 }
 
 output "bucket_name" {

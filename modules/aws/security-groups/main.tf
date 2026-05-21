@@ -112,6 +112,32 @@ resource "aws_security_group" "db" {
   })
 }
 
+resource "aws_security_group" "redis" {
+  name        = "${var.project}-${var.environment}-redis-sg"
+  description = "Redis ElastiCache access from app tier"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+    description     = "Redis from app tier"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-redis-sg"
+    Tier = "cache"
+  })
+}
+
 resource "aws_security_group" "eks_workers" {
   name   = "${var.project}-${var.environment}-eks-workers-sg"
   vpc_id = var.vpc_id

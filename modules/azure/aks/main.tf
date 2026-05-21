@@ -38,11 +38,15 @@ resource "azurerm_kubernetes_cluster" "this" {
     dns_service_ip    = "10.100.0.10"
   }
 
-  linux_profile {
-    admin_username = var.admin_username
+  dynamic "linux_profile" {
+    for_each = var.public_key != "" ? [1] : []
 
-    ssh_key {
-      key_data = var.public_key
+    content {
+      admin_username = var.admin_username
+
+      ssh_key {
+        key_data = var.public_key
+      }
     }
   }
 

@@ -35,6 +35,18 @@ variable "compute_type" {
   }
 }
 
+variable "enable_database" {
+  description = "Deploy database resources. Set to false to skip database deployment."
+  type        = bool
+  default     = true
+}
+
+variable "enable_redis" {
+  description = "Deploy Redis cache resources."
+  type        = bool
+  default     = false
+}
+
 variable "create_bastion" {
   description = "Create a bastion host for SSH access."
   type        = bool
@@ -143,6 +155,18 @@ variable "api_allowed_cidrs" {
   description = "Allowed CIDRs for the public EKS API endpoint."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "redis_node_type" {
+  description = "ElastiCache Redis node type."
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "redis_engine_version" {
+  description = "Redis engine version."
+  type        = string
+  default     = "7.0"
 }
 
 variable "db_name" {

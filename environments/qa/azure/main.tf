@@ -66,12 +66,14 @@ module "compute" {
 }
 
 module "database" {
+  count               = var.enable_database ? 1 : 0
   source              = "../../../modules/azure/database"
   project             = var.project
   environment         = var.environment
   resource_group_name = module.vnet.resource_group_name
   location            = var.location
   subnet_id           = module.vnet.db_subnet_id
+  vnet_id             = module.vnet.vnet_id
   engine              = var.db_engine
   db_name             = var.db_name
   admin_username      = var.db_admin_username
@@ -100,7 +102,18 @@ module "aks" {
   node_disk_size      = var.node_disk_size
   enable_auto_scaling = var.enable_auto_scaling
   admin_username      = var.aks_admin_username
-  public_key          = coalesce(var.kubernetes_public_key, var.bastion_public_key)
+  public_key          = coalesce(var.kubernetes_public_key, var.bastion_public_key, "")
+  tags                = local.common_tags
+}
+
+module "redis" {
+  count               = var.enable_redis ? 1 : 0
+  source              = "../../../modules/azure/redis"
+  project             = var.project
+  environment         = var.environment
+  resource_group_name = module.vnet.resource_group_name
+  location            = var.location
+  redis_version       = var.redis_version
   tags                = local.common_tags
 }
 

@@ -38,8 +38,9 @@ resource "google_sql_database_instance" "this" {
     disk_autoresize = true
 
     backup_configuration {
-      enabled            = true
-      binary_log_enabled = var.engine == "mysql"
+      enabled                        = true
+      binary_log_enabled             = var.engine == "mysql"
+      point_in_time_recovery_enabled = var.engine == "postgresql"
     }
 
     ip_configuration {

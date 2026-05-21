@@ -23,6 +23,12 @@ variable "subnet_id" {
   type        = string
 }
 
+variable "vnet_id" {
+  description = "VNet ID for private DNS zone link. Optional."
+  type        = string
+  default     = ""
+}
+
 variable "engine" {
   description = "Database engine: postgresql, mysql, sqlserver"
   type        = string

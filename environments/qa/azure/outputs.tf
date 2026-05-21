@@ -47,11 +47,15 @@ output "bastion_ssh_command" {
 }
 
 output "db_fqdn" {
-  value = module.database.db_fqdn
+  value = length(module.database) > 0 ? module.database[0].db_fqdn : null
 }
 
 output "db_engine" {
-  value = module.database.engine
+  value = length(module.database) > 0 ? module.database[0].engine : null
+}
+
+output "redis_hostname" {
+  value = length(module.redis) > 0 ? module.redis[0].redis_hostname : null
 }
 
 output "storage_account_name" {

@@ -82,8 +82,9 @@ variable "admin_username" {
 }
 
 variable "public_key" {
-  description = "SSH public key for AKS node access."
+  description = "SSH public key for AKS node access. Leave empty to skip SSH configuration."
   type        = string
+  default     = ""
 }
 
 variable "tags" {
