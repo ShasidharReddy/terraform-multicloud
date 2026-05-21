@@ -69,3 +69,13 @@ output "bucket_name" {
 output "bucket_url" {
   value = module.storage.bucket_url
 }
+
+output "instance_private_ips" {
+  description = "Private IP addresses of GCP VMs"
+  value       = length(module.compute) > 0 ? module.compute[0].private_ips : []
+}
+
+output "instance_zones" {
+  description = "Zones of GCP VMs"
+  value       = length(module.compute) > 0 ? module.compute[0].zones : []
+}

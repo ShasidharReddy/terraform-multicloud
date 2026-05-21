@@ -65,3 +65,8 @@ output "storage_account_name" {
 output "container_name" {
   value = module.storage.container_name
 }
+
+output "vm_names" {
+  description = "Names of Azure VMs"
+  value       = length(module.compute) > 0 ? module.compute[0].vm_names : []
+}

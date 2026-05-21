@@ -169,6 +169,96 @@ done
 CONFIRM=""; prompt_yesno CONFIRM "Proceed? [Y/n]:" y
 [[ "$CONFIRM" == "true" ]] || { tty_out "${YELLOW}Cancelled.${RESET}\n"; exit 0; }
 
+# ── Post-apply resource summary ─────────────────────────────────────────────
+show_deployment_summary() {
+  local label="$1"
+  local env_dir="$2"
+  local tf_out
+  tf_out=$(cd "$env_dir" && terraform output -json 2>/dev/null) || return 0
+  [[ -z "$tf_out" || "$tf_out" == "{}" ]] && return 0
+
+  tty_out "\n${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
+  tty_out "${CYAN}${BOLD}  📋  Deployed Resources — %s${RESET}\n" "$label"
+  tty_out "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
+
+  local _py; _py=$(mktemp /tmp/tf_summary_XXXXXX.py)
+  cat > "$_py" << 'PYEOF'
+import sys, json
+
+data = json.loads(sys.stdin.read())
+
+SECTIONS = [
+  ("🖥  Compute / VMs", [
+    "instance_names","instance_group_name","instance_group_manager_name",
+    "instance_ids","vm_ids","vm_names",
+    "vm_ips","private_ips","vm_private_ips","instance_private_ips",
+    "instance_zones","gcloud_list_instances_cmd",
+  ]),
+  ("☸  Kubernetes", [
+    "gke_cluster_name","gke_endpoint","gke_kubeconfig_command",
+    "eks_cluster_name","eks_cluster_endpoint","eks_kubeconfig_command",
+    "aks_cluster_name","aks_host","aks_kubeconfig_command",
+  ]),
+  ("🔐 Access / Bastion", [
+    "bastion_public_ip","bastion_iap_ssh_command","bastion_ssh_command",
+  ]),
+  ("🌐 Network", [
+    "vpc_id","vnet_id","network_id",
+    "public_subnet_ids","private_subnet_ids","db_subnet_ids",
+    "public_subnet_id","private_subnet_id","db_subnet_id",
+    "private_subnet_self_link",
+  ]),
+  ("🗄  Database", [
+    "db_endpoint","db_reader_endpoint","db_private_ip","db_public_ip",
+    "db_connection_name","db_fqdn","db_port","db_engine",
+  ]),
+  ("⚡ Redis", [
+    "redis_host","redis_hostname","redis_endpoint","redis_port",
+  ]),
+  ("🪣 Storage", [
+    "bucket_names","bucket_name","bucket_url","bucket_id","bucket_arn",
+    "storage_account_name","container_name",
+  ]),
+  ("🔑 IAM", [
+    "compute_sa_email","gke_sa_email",
+  ]),
+]
+
+printed = set()
+
+def fmt(v):
+  if isinstance(v, list):
+    v = [x for x in v if x is not None and x != ""]
+    if not v:
+      return None
+    return ("\n" + "\n".join(f"      • {i}" for i in v)) if len(v) > 1 else str(v[0])
+  return None if v is None or v == "" else str(v)
+
+for title, keys in SECTIONS:
+  rows = [(k, fmt(data[k]["value"])) for k in keys if k in data and fmt(data[k]["value"])]
+  if rows:
+    print(f"\n  {title}")
+    for k, fv in rows:
+      print(f"    {k}: {fv}")
+    printed.update(k for k, _ in rows)
+
+rest = [(k, fmt(data[k]["value"])) for k in data if k not in printed and fmt(data[k]["value"])]
+if rest:
+  print("\n  📌 Other")
+  for k, fv in rest:
+    print(f"    {k}: {fv}")
+PYEOF
+
+  local formatted
+  formatted=$(printf '%s' "$tf_out" | python3 "$_py" 2>/dev/null) || formatted=""
+  rm -f "$_py"
+
+  if [[ -n "$formatted" ]]; then
+    while IFS= read -r line; do tty_out "%s\n" "$line"; done <<< "$formatted"
+  fi
+  tty_out "\n${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n\n"
+}
+
 # ── Execute ──────────────────────────────────────────────────────────────────
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -218,6 +308,7 @@ for env in "${SELECTED_ENVS[@]}"; do
     popd >/dev/null
     if (( rc == 0 )); then
       tty_out "${GREEN}✅  %s/%s — %s complete${RESET}\n" "$env" "$cloud" "$ACTION"
+      [[ "$ACTION" == "apply" ]] && show_deployment_summary "$env/$cloud" "$ENV_DIR"
     else
       tty_out "${RED}❌  %s/%s — %s FAILED (exit %d)${RESET}\n" "$env" "$cloud" "$ACTION" "$rc"
       FAILED_COMBOS+=("$env/$cloud")
