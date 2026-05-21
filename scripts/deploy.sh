@@ -1,429 +1,210 @@
 #!/usr/bin/env bash
+# Terraform Multi-Cloud interactive deploy helper
 set -euo pipefail
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-RESET='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="$PROJECT_ROOT/logs"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/deploy_$(date +%Y%m%d_%H%M%S).log"
+mkdir -p "$PROJECT_ROOT/logs"
+LOG_FILE="$PROJECT_ROOT/logs/deploy_$(date +%Y%m%d_%H%M%S).log"
 
-ENVIRONMENTS=(dev qa stage prod)
-CLOUDS=(aws azure gcp)
-ACTIONS=(plan apply destroy)
+# All interactive I/O goes directly to /dev/tty
+tty_out() { printf "$@" >/dev/tty; }
+tty_in()  { read -r "$@" </dev/tty; }
+
+prompt_choice() {
+  local -n _ret="$1"; local title="$2"; shift 2; local opts=("$@")
+  while true; do
+    tty_out "\n${YELLOW}%s${RESET}\n" "$title"
+    local i=1; for o in "${opts[@]}"; do tty_out "  ${CYAN}%d)${RESET} %s\n" "$i" "$o"; ((i++)); done
+    tty_out "${BOLD}> ${RESET}"; local sel; tty_in sel
+    if [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#opts[@]} )); then
+      _ret="${opts[sel-1]}"; return 0
+    fi
+    local slow; slow="$(printf '%s' "$sel" | tr '[:upper:]' '[:lower:]' | xargs)"
+    for o in "${opts[@]}"; do
+      [[ "$slow" == "$(printf '%s' "$o" | tr '[:upper:]' '[:lower:]')" ]] && { _ret="$o"; return 0; }
+    done
+    tty_out "${RED}Invalid: '%s' — enter a number 1-%d or the option name.${RESET}\n" "$sel" "${#opts[@]}"
+  done
+}
+
+prompt_yesno() {
+  local -n _yn="$1"; local msg="$2"; local def="${3:-y}"
+  while true; do
+    tty_out "${YELLOW}%s${RESET} " "$msg"; local r; tty_in r
+    r="$(printf '%s' "${r:-$def}" | tr '[:upper:]' '[:lower:]' | xargs)"
+    case "$r" in y|yes) _yn="true"; return 0;; n|no) _yn="false"; return 0;;
+      *) tty_out "${RED}Please answer y or n.${RESET}\n";; esac
+  done
+}
+
+prompt_number() {
+  local -n _nr="$1"; local msg="$2"; local mn="$3" mx="$4" df="$5"
+  while true; do
+    tty_out "${YELLOW}%s${RESET} [%d-%d, default %d]: " "$msg" "$mn" "$mx" "$df"
+    local v; tty_in v; v="${v:-$df}"
+    [[ "$v" =~ ^[0-9]+$ ]] && (( v >= mn && v <= mx )) && { _nr="$v"; return 0; }
+    tty_out "${RED}Enter a number between %d and %d.${RESET}\n" "$mn" "$mx"
+  done
+}
+
+parse_multiselect() {
+  # parse_multiselect ARRAY_NAMEREF "input" item1 item2 ...
+  local -n _ms="$1"; local input="$2"; shift 2; local valid=("$@")
+  local -a sel=()
+  IFS=',' read -r -a raw <<< "$input"
+  for item in "${raw[@]}"; do
+    item="$(printf '%s' "$item" | xargs | tr '[:upper:]' '[:lower:]')"
+    local found=0
+    for idx in "${!valid[@]}"; do
+      local vlow; vlow="$(printf '%s' "${valid[$idx]}" | tr '[:upper:]' '[:lower:]')"
+      local num=$(( idx + 1 ))
+      if [[ "$item" == "$vlow" || "$item" == "$num" ]]; then
+        sel+=("${valid[$idx]}"); found=1; break
+      fi
+    done
+    if [[ "$item" == "all" ]]; then sel=("${valid[@]}"); break; fi
+    (( found )) || { tty_out "${RED}Unknown: '%s'${RESET}\n" "$item"; return 1; }
+  done
+  (( ${#sel[@]} > 0 )) || { tty_out "${RED}Select at least one.${RESET}\n"; return 1; }
+  # dedup
+  local -A seen=()
+  local deduped=()
+  for v in "${sel[@]}"; do [[ -z "${seen[$v]:-}" ]] && { deduped+=("$v"); seen[$v]=1; }; done
+  _ms=("${deduped[@]}")
+}
+
+# ── Banner ───────────────────────────────────────────────────────────────────
+tty_out "\n${CYAN}${BOLD}╔══════════════════════════════════════════╗${RESET}\n"
+tty_out "${CYAN}${BOLD}║   Terraform Multi-Cloud Deploy Helper    ║${RESET}\n"
+tty_out "${CYAN}${BOLD}╚══════════════════════════════════════════╝${RESET}\n"
+tty_out "  Log: %s\n" "$LOG_FILE"
+
+# ── Environments ─────────────────────────────────────────────────────────────
 SELECTED_ENVS=()
+while true; do
+  tty_out "\n${YELLOW}Select environment(s)${RESET} — comma-separated (e.g. 1,2 or dev,qa or all):\n"
+  tty_out "  ${CYAN}1)${RESET} dev   ${CYAN}2)${RESET} qa   ${CYAN}3)${RESET} stage   ${CYAN}4)${RESET} prod\n"
+  tty_out "${BOLD}> ${RESET}"; local_input=""; tty_in local_input
+  parse_multiselect SELECTED_ENVS "$local_input" dev qa stage prod && break
+done
+
+# ── Clouds ───────────────────────────────────────────────────────────────────
 SELECTED_CLOUDS=()
-PARSED_SELECTION=()
-FAILED_COMBINATIONS=()
-ACTION=""
-COMPUTE_MODE="vm"
-DB_ENGINE_CHOICE="postgresql"
-ENABLE_DATABASE="true"
-ENABLE_REDIS="false"
+while true; do
+  tty_out "\n${YELLOW}Select cloud(s)${RESET} — comma-separated (e.g. 1,3 or aws,gcp or all):\n"
+  tty_out "  ${CYAN}1)${RESET} aws   ${CYAN}2)${RESET} azure   ${CYAN}3)${RESET} gcp\n"
+  tty_out "${BOLD}> ${RESET}"; local_input=""; tty_in local_input
+  parse_multiselect SELECTED_CLOUDS "$local_input" aws azure gcp && break
+done
+
+# ── Action ───────────────────────────────────────────────────────────────────
+ACTION_ARG="${1:-}"; ACTION=""
+if [[ -n "$ACTION_ARG" ]]; then
+  ACTION="$(printf '%s' "$ACTION_ARG" | tr '[:upper:]' '[:lower:]')"
+  [[ "$ACTION" =~ ^(plan|apply|destroy)$ ]] || { tty_out "${RED}Invalid action: %s${RESET}\n" "$ACTION"; exit 1; }
+  tty_out "${YELLOW}Action (from argument): %s${RESET}\n" "$ACTION"
+else
+  prompt_choice ACTION "Select action:" plan apply destroy
+fi
+
+# ── Compute ──────────────────────────────────────────────────────────────────
+COMPUTE_TYPE=""
+prompt_choice COMPUTE_TYPE "Select compute type:" vm kubernetes
+
 NODE_COUNT=2
+prompt_number NODE_COUNT "VM / node count" 1 50 2
 
-log() {
-  printf "%b\n" "$1" | tee -a "$LOG_FILE"
-}
+# ── Database ──────────────────────────────────────────────────────────────────
+ENABLE_DATABASE=""; prompt_yesno ENABLE_DATABASE "Deploy database?  [Y/n]:" y
 
-die() {
-  log "${RED}${BOLD}Error:${RESET} $1"
-  exit 1
-}
+DB_ENGINE="postgresql"
+if [[ "$ENABLE_DATABASE" == "true" ]]; then
+  prompt_choice DB_ENGINE "Select database engine:" postgresql mysql sqlserver aurora-postgresql aurora-mysql
+fi
 
-on_error() {
-  local exit_code=$?
-  log "${RED}${BOLD}Execution aborted.${RESET} Review log: $LOG_FILE"
-  exit "$exit_code"
-}
-trap on_error ERR
+# ── Redis ─────────────────────────────────────────────────────────────────────
+ENABLE_REDIS=""; prompt_yesno ENABLE_REDIS "Deploy Redis?     [y/N]:" n
 
-banner() {
-  log "${CYAN}${BOLD}"
-  log "╔══════════════════════════════════════════════╗"
-  log "║      Terraform Multi-Cloud Deployment       ║"
-  log "╚══════════════════════════════════════════════╝"
-  log "${RESET}"
-}
+# ── Summary ──────────────────────────────────────────────────────────────────
+tty_out "\n${CYAN}${BOLD}┌────────────────────────────────────────────┐${RESET}\n"
+tty_out "${CYAN}${BOLD}│              Execution Summary             │${RESET}\n"
+tty_out "${CYAN}${BOLD}└────────────────────────────────────────────┘${RESET}\n"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Environments" "${SELECTED_ENVS[*]}"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Clouds"       "${SELECTED_CLOUDS[*]}"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Action"       "$ACTION"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Compute"      "$COMPUTE_TYPE"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Count"        "$NODE_COUNT"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Database"     "$ENABLE_DATABASE"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "DB Engine"    "$DB_ENGINE"
+tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Redis"        "$ENABLE_REDIS"
+tty_out "\n  Combinations:\n"
+for e in "${SELECTED_ENVS[@]}"; do
+  for c in "${SELECTED_CLOUDS[@]}"; do
+    tty_out "    ${CYAN}•${RESET} environments/%s/%s\n" "$e" "$c"
+  done
+done
 
-join_by() {
-  local delimiter="$1"
-  shift
-  local first=1
-  local item
-  for item in "$@"; do
-    if [ "$first" -eq 1 ]; then
-      printf "%s" "$item"
-      first=0
-    else
-      printf "%s%s" "$delimiter" "$item"
+CONFIRM=""; prompt_yesno CONFIRM "Proceed? [Y/n]:" y
+[[ "$CONFIRM" == "true" ]] || { tty_out "${YELLOW}Cancelled.${RESET}\n"; exit 0; }
+
+# ── Execute ──────────────────────────────────────────────────────────────────
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+FAILED_COMBOS=()
+
+for env in "${SELECTED_ENVS[@]}"; do
+  for cloud in "${SELECTED_CLOUDS[@]}"; do
+    ENV_DIR="$PROJECT_ROOT/environments/$env/$cloud"
+    if [[ ! -d "$ENV_DIR" ]]; then
+      tty_out "${YELLOW}⚠️   Skipping %s/%s — directory not found${RESET}\n" "$env" "$cloud"
+      continue
     fi
-  done
-}
 
-default_vm_count() {
-  case "$1" in
-    dev) echo 1 ;;
-    qa) echo 2 ;;
-    stage) echo 3 ;;
-    prod) echo 5 ;;
-    *) die "Unknown environment '$1'" ;;
-  esac
-}
+    tty_out "\n${CYAN}${BOLD}══> [%s/%s] %s${RESET}\n" "$env" "$cloud" "$ACTION"
+    pushd "$ENV_DIR" >/dev/null
 
-set_vm_count() {
-  eval "VM_COUNT_$1=$2"
-}
+    TF_VARS=(
+      "-var=compute_type=$COMPUTE_TYPE"
+      "-var=vm_count=$NODE_COUNT"
+      "-var=node_count=$NODE_COUNT"
+      "-var=enable_database=$ENABLE_DATABASE"
+      "-var=db_engine=$DB_ENGINE"
+      "-var=enable_redis=$ENABLE_REDIS"
+    )
 
-get_vm_count() {
-  if eval "[ \"\${VM_COUNT_$1+x}\" = x ]"; then
-    eval "printf '%s' \"\${VM_COUNT_$1}\""
-  else
-    default_vm_count "$1"
-  fi
-}
-
-check_dependencies() {
-  command -v terraform >/dev/null 2>&1 || die "terraform not found in PATH. Install Terraform >= 1.5.0 first."
-}
-
-parse_multi_select() {
-  local input="$1"
-  shift
-  local options=("$@")
-  local normalized="${input//,/ }"
-  local tokens=()
-  local token value seen=" "
-  PARSED_SELECTION=()
-
-  [ -n "${normalized//[[:space:]]/}" ] || return 1
-  read -r -a tokens <<< "$normalized"
-
-  for token in "${tokens[@]}"; do
-    [[ "$token" =~ ^[0-9]+$ ]] || return 1
-    [ "$token" -ge 1 ] && [ "$token" -le "${#options[@]}" ] || return 1
-    value="${options[$((token - 1))]}"
-    case "$seen" in
-      *" $value "*) ;;
-      *)
-        PARSED_SELECTION+=("$value")
-        seen="$seen$value "
-        ;;
-    esac
-  done
-
-  [ "${#PARSED_SELECTION[@]}" -gt 0 ] || return 1
-}
-
-prompt_multi_select() {
-  local target="$1"
-  local title="$2"
-  shift 2
-  local options=("$@")
-  local input i
-
-  while true; do
-    log "${BOLD}${title}${RESET}"
-    for ((i=0; i<${#options[@]}; i++)); do
-      log "  $((i + 1))) ${options[$i]}"
-    done
-    printf "%b" "${YELLOW}Enter numbers separated by spaces or commas:${RESET} "
-    read -r input
-    if parse_multi_select "$input" "${options[@]}"; then
-      if [ "$target" = "SELECTED_ENVS" ]; then
-        SELECTED_ENVS=("${PARSED_SELECTION[@]}")
-      else
-        SELECTED_CLOUDS=("${PARSED_SELECTION[@]}")
-      fi
-      break
-    fi
-    log "${RED}Invalid selection. Choose at least one valid option.${RESET}"
-  done
-}
-
-prompt_single_choice() {
-  local __resultvar="$1"
-  local title="$2"
-  shift 2
-  local options=("$@")
-  local input i
-
-  while true; do
-    log "${BOLD}${title}${RESET}"
-    for ((i=0; i<${#options[@]}; i++)); do
-      log "  $((i + 1))) ${options[$i]}"
-    done
-    printf "%b" "${YELLOW}Choose one option:${RESET} "
-    read -r input
-    [[ "$input" =~ ^[0-9]+$ ]] || { log "${RED}Invalid selection.${RESET}"; continue; }
-    [ "$input" -ge 1 ] && [ "$input" -le "${#options[@]}" ] || { log "${RED}Invalid selection.${RESET}"; continue; }
-    printf -v "$__resultvar" '%s' "${options[$((input - 1))]}"
-    break
-  done
-}
-
-prompt_action() {
-  prompt_single_choice ACTION "Select action" "${ACTIONS[@]}"
-}
-
-validate_count() {
-  local value="$1"
-  [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 50 ]
-}
-
-prompt_vm_counts() {
-  local env input default_count
-
-  log "${BOLD}Default VM counts${RESET}"
-  for env in "${SELECTED_ENVS[@]}"; do
-    default_count="$(default_vm_count "$env")"
-    set_vm_count "$env" "$default_count"
-    log "  - $env=$default_count"
-  done
-
-  printf "%b" "${YELLOW}Override VM count per selected environment? [y/N]:${RESET} "
-  read -r input
-  case "$input" in
-    y|Y|yes|YES|Yes) ;;
-    *) return ;;
-  esac
-
-  for env in "${SELECTED_ENVS[@]}"; do
-    default_count="$(default_vm_count "$env")"
-    while true; do
-      printf "%b" "${YELLOW}VM count for $env (1-50, Enter for default $default_count):${RESET} "
-      read -r input
-      if [ -z "$input" ]; then
-        set_vm_count "$env" "$default_count"
-        break
-      fi
-      if validate_count "$input"; then
-        set_vm_count "$env" "$input"
-        break
-      fi
-      log "${RED}VM count must be a number from 1 to 50.${RESET}"
-    done
-  done
-}
-
-prompt_enable_database() {
-  printf "%b" "${YELLOW}Deploy database? [Y/n]:${RESET} "
-  read -r input
-  case "$input" in
-    n|N|no|NO|No) ENABLE_DATABASE="false" ;;
-    *) ENABLE_DATABASE="true" ;;
-  esac
-}
-
-prompt_enable_redis() {
-  printf "%b" "${YELLOW}Deploy Redis cache? [y/N]:${RESET} "
-  read -r input
-  case "$input" in
-    y|Y|yes|YES|Yes) ENABLE_REDIS="true" ;;
-    *) ENABLE_REDIS="false" ;;
-  esac
-}
-
-prompt_node_count() {
-  local input
-  while true; do
-    printf "%b" "${YELLOW}Kubernetes node count (1-50, Enter for default 2):${RESET} "
-    read -r input
-    if [ -z "$input" ]; then
-      NODE_COUNT=2
-      break
-    fi
-    if validate_count "$input"; then
-      NODE_COUNT="$input"
-      break
-    fi
-    log "${RED}Node count must be a number from 1 to 50.${RESET}"
-  done
-}
-
-cloud_db_engine() {
-  local cloud="$1"
-  case "$DB_ENGINE_CHOICE" in
-    postgresql) echo "postgresql" ;;
-    mysql) echo "mysql" ;;
-    sqlserver)
-      case "$cloud" in
-        aws) echo "sqlserver-se" ;;
-        *) echo "sqlserver" ;;
-      esac
-      ;;
-    aurora-postgresql) echo "aurora-postgresql" ;;
-    aurora-mysql) echo "aurora-mysql" ;;
-    *) die "Unsupported database engine selection: $DB_ENGINE_CHOICE" ;;
-  esac
-}
-
-validate_engine_clouds() {
-  local cloud
-  if [[ "$DB_ENGINE_CHOICE" == aurora-* ]]; then
-    for cloud in "${SELECTED_CLOUDS[@]}"; do
-      [ "$cloud" = "aws" ] || die "Aurora engines are supported only for AWS deployments."
-    done
-  fi
-}
-
-show_summary() {
-  local env vm_items=()
-  for env in "${SELECTED_ENVS[@]}"; do
-    vm_items+=("$env=$(get_vm_count "$env")")
-  done
-
-  log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  log "  Deployment Plan"
-  log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  log "  Environments : $(join_by ', ' "${SELECTED_ENVS[@]}")"
-  log "  Clouds       : $(join_by ', ' "${SELECTED_CLOUDS[@]}")"
-  log "  Action       : $ACTION"
-  log "  Compute      : $COMPUTE_MODE"
-  log "  Database     : $ENABLE_DATABASE"
-  log "  DB Engine    : $([ "$ENABLE_DATABASE" = "true" ] && printf "%s" "$DB_ENGINE_CHOICE" || printf "n/a")"
-  log "  Redis        : $ENABLE_REDIS"
-  if [ "$COMPUTE_MODE" != "kubernetes" ]; then
-    log "  VM Count     : $(join_by ', ' "${vm_items[@]}")"
-  fi
-  if [ "$COMPUTE_MODE" != "vm" ]; then
-    log "  Node Count   : $NODE_COUNT"
-  fi
-  log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-}
-
-run_terraform() {
-  local env="$1"
-  local cloud="$2"
-  local dir="$PROJECT_ROOT/environments/$env/$cloud"
-  local vm_count="$(get_vm_count "$env")"
-  local db_engine
-  local compute_type="vm"
-  local use_kubernetes="false"
-  local args=()
-
-  if [ ! -d "$dir" ]; then
-    FAILED_COMBINATIONS+=("$env/$cloud")
-    log "${RED}Missing directory: $dir${RESET}"
-    return 1
-  fi
-
-  db_engine="$(cloud_db_engine "$cloud")"
-
-  case "$COMPUTE_MODE" in
-    vm)
-      compute_type="vm"
-      use_kubernetes="false"
-      ;;
-    kubernetes)
-      compute_type="kubernetes"
-      use_kubernetes="true"
-      ;;
-    both)
-      compute_type="vm"
-      use_kubernetes="true"
-      ;;
-  esac
-
-  args+=("-var=compute_type=$compute_type" "-var=use_kubernetes=$use_kubernetes" "-var=db_engine=$db_engine")
-  args+=("-var=enable_database=$ENABLE_DATABASE")
-  args+=("-var=enable_redis=$ENABLE_REDIS")
-  if [ "$COMPUTE_MODE" != "kubernetes" ]; then
-    args+=("-var=vm_count=$vm_count")
-  fi
-  if [ "$COMPUTE_MODE" != "vm" ]; then
-    args+=("-var=node_count=$NODE_COUNT")
-  fi
-
-  log "${CYAN}→ Processing $env/$cloud${RESET}"
-  (
-    cd "$dir"
-    terraform init -backend=false -input=false
+    terraform init -input=false -no-color
+    rc=0
     case "$ACTION" in
       plan)
-        terraform plan -input=false "${args[@]}"
+        terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
         ;;
       apply)
-        terraform apply -input=false -auto-approve "${args[@]}"
+        terraform plan  -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
+        (( rc == 0 )) && terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
         ;;
       destroy)
-        terraform destroy -input=false -auto-approve "${args[@]}"
+        terraform destroy -input=false -no-color -auto-approve "${TF_VARS[@]}" || rc=$?
         ;;
     esac
-  ) 2>&1 | tee -a "$LOG_FILE" || {
-    FAILED_COMBINATIONS+=("$env/$cloud")
-    return 1
-  }
-}
 
-main() {
-  local compute_prompt=("VMs" "Kubernetes (EKS/GKE/AKS)" "Both")
-  local db_prompt=("PostgreSQL" "MySQL" "SQL Server" "Aurora PostgreSQL (AWS only)" "Aurora MySQL (AWS only)")
-  local compute_choice db_choice confirm
-
-  check_dependencies
-  banner
-  prompt_multi_select SELECTED_ENVS "Select environments" "${ENVIRONMENTS[@]}"
-  prompt_multi_select SELECTED_CLOUDS "Select clouds" "${CLOUDS[@]}"
-  prompt_single_choice compute_choice "Select compute type" "${compute_prompt[@]}"
-  case "$compute_choice" in
-    "VMs") COMPUTE_MODE="vm" ;;
-    "Kubernetes (EKS/GKE/AKS)") COMPUTE_MODE="kubernetes" ;;
-    "Both") COMPUTE_MODE="both" ;;
-  esac
-
-  prompt_enable_database
-  if [ "$ENABLE_DATABASE" = "true" ]; then
-    prompt_single_choice db_choice "Select database engine" "${db_prompt[@]}"
-    case "$db_choice" in
-      "PostgreSQL") DB_ENGINE_CHOICE="postgresql" ;;
-      "MySQL") DB_ENGINE_CHOICE="mysql" ;;
-      "SQL Server") DB_ENGINE_CHOICE="sqlserver" ;;
-      "Aurora PostgreSQL (AWS only)") DB_ENGINE_CHOICE="aurora-postgresql" ;;
-      "Aurora MySQL (AWS only)") DB_ENGINE_CHOICE="aurora-mysql" ;;
-    esac
-    validate_engine_clouds
-  fi
-  prompt_enable_redis
-
-  if [ "$COMPUTE_MODE" != "vm" ]; then
-    prompt_node_count
-  fi
-  if [ "$COMPUTE_MODE" != "kubernetes" ]; then
-    prompt_vm_counts
-  fi
-  prompt_action
-  show_summary
-
-  printf "%b" "${YELLOW}Proceed? [y/N] ${RESET}"
-  read -r confirm
-  case "$confirm" in
-    y|Y|yes|YES|Yes) ;;
-    *) die "Operation cancelled by user." ;;
-  esac
-
-  for env in "${SELECTED_ENVS[@]}"; do
-    for cloud in "${SELECTED_CLOUDS[@]}"; do
-      if ! run_terraform "$env" "$cloud"; then
-        log "${RED}Failed: $env/$cloud${RESET}"
-      else
-        log "${GREEN}Completed: $env/$cloud${RESET}"
-      fi
-    done
+    popd >/dev/null
+    if (( rc == 0 )); then
+      tty_out "${GREEN}✅  %s/%s — %s complete${RESET}\n" "$env" "$cloud" "$ACTION"
+    else
+      tty_out "${RED}❌  %s/%s — %s FAILED (exit %d)${RESET}\n" "$env" "$cloud" "$ACTION" "$rc"
+      FAILED_COMBOS+=("$env/$cloud")
+    fi
   done
+done
 
-  if [ "${#FAILED_COMBINATIONS[@]}" -gt 0 ]; then
-    log "${RED}${BOLD}Completed with failures:${RESET} $(join_by ', ' "${FAILED_COMBINATIONS[@]}")"
-    exit 1
-  fi
+if (( ${#FAILED_COMBOS[@]} > 0 )); then
+  tty_out "\n${RED}${BOLD}Failed: %s${RESET}\n" "${FAILED_COMBOS[*]}"
+  tty_out "See log: %s\n" "$LOG_FILE"
+  exit 1
+fi
 
-  log "${GREEN}${BOLD}All requested combinations completed successfully.${RESET}"
-  log "Log file: $LOG_FILE"
-}
-
-main "$@"
+tty_out "\n${GREEN}${BOLD}All actions completed successfully!${RESET}\n"
+tty_out "Log saved: %s\n\n" "$LOG_FILE"
