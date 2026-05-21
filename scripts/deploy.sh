@@ -292,13 +292,25 @@ for env in "${SELECTED_ENVS[@]}"; do
 
     terraform init -input=false -no-color
     rc=0
+    _did_apply=false
     case "$ACTION" in
       plan)
         terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
+        if (( rc == 0 )); then
+          _apply_now=""
+          prompt_yesno _apply_now "  ✅ Plan succeeded — apply now?" n
+          if [[ "$_apply_now" == "true" ]]; then
+            terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
+            _did_apply=true
+          fi
+        fi
         ;;
       apply)
         terraform plan  -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
-        (( rc == 0 )) && terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
+        if (( rc == 0 )); then
+          terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
+          _did_apply=true
+        fi
         ;;
       destroy)
         terraform destroy -input=false -no-color -auto-approve "${TF_VARS[@]}" || rc=$?
@@ -308,7 +320,7 @@ for env in "${SELECTED_ENVS[@]}"; do
     popd >/dev/null
     if (( rc == 0 )); then
       tty_out "${GREEN}✅  %s/%s — %s complete${RESET}\n" "$env" "$cloud" "$ACTION"
-      [[ "$ACTION" == "apply" ]] && show_deployment_summary "$env/$cloud" "$ENV_DIR"
+      [[ "$_did_apply" == "true" ]] && show_deployment_summary "$env/$cloud" "$ENV_DIR"
     else
       tty_out "${RED}❌  %s/%s — %s FAILED (exit %d)${RESET}\n" "$env" "$cloud" "$ACTION" "$rc"
       FAILED_COMBOS+=("$env/$cloud")
