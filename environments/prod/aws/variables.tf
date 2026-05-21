@@ -1,21 +1,29 @@
 variable "project" {
   description = "Project name."
   type        = string
+  default     = "my-project"
+
 }
 
 variable "environment" {
   description = "Environment name."
   type        = string
+  default     = "prod"
+
 }
 
 variable "region" {
   description = "AWS region."
   type        = string
+  default     = "us-west-2"
+
 }
 
 variable "vpc_cidr" {
   description = "VPC CIDR block."
   type        = string
+  default     = "10.0.0.0/16"
+
 }
 
 variable "use_kubernetes" {
@@ -73,6 +81,8 @@ variable "vm_count" {
 variable "instance_type" {
   description = "EC2 instance type."
   type        = string
+  default     = "t3.large"
+
 }
 
 variable "ami_id" {
@@ -172,16 +182,21 @@ variable "redis_engine_version" {
 variable "db_name" {
   description = "RDS database name."
   type        = string
+  default     = "appdb"
+
 }
 
 variable "db_username" {
   description = "RDS admin username."
   type        = string
+  default     = "dbadmin"
+
 }
 
 variable "db_password" {
   description = "RDS admin password."
   type        = string
+  default     = "TfDefault2024!"
   sensitive   = true
 }
 
@@ -199,6 +214,8 @@ variable "db_engine" {
 variable "db_instance_class" {
   description = "RDS instance class."
   type        = string
+  default     = "db.t3.medium"
+
 }
 
 variable "db_engine_version" {
@@ -216,9 +233,13 @@ variable "allocated_storage" {
 variable "multi_az" {
   description = "Enable Multi-AZ RDS."
   type        = bool
+  default     = true
+
 }
 
 variable "bucket_name_suffix" {
   description = "Suffix for the S3 bucket name."
   type        = string
+  default     = "data"
+
 }

@@ -1,46 +1,64 @@
 variable "project" {
   description = "Project name."
   type        = string
+  default     = "my-project"
+
 }
 
 variable "environment" {
   description = "Environment name."
   type        = string
+  default     = "stage"
+
 }
 
 variable "project_id" {
   description = "GCP project ID."
   type        = string
+  default     = ""
+
 }
 
 variable "region" {
   description = "GCP region."
   type        = string
+  default     = "us-east1"
+
 }
 
 variable "zone" {
   description = "GCP zone."
   type        = string
+  default     = "us-east1-b"
+
 }
 
 variable "vpc_cidr" {
   description = "VPC CIDR block."
   type        = string
+  default     = "10.0.0.0/16"
+
 }
 
 variable "public_subnet_cidr" {
   description = "Public subnet CIDR block."
   type        = string
+  default     = "10.0.1.0/24"
+
 }
 
 variable "private_subnet_cidr" {
   description = "Private subnet CIDR block."
   type        = string
+  default     = "10.0.2.0/24"
+
 }
 
 variable "db_subnet_cidr" {
   description = "DB subnet CIDR block."
   type        = string
+  default     = "10.0.3.0/24"
+
 }
 
 variable "use_kubernetes" {
@@ -98,6 +116,8 @@ variable "vm_count" {
 variable "machine_type" {
   description = "GCP machine type."
   type        = string
+  default     = "n2-standard-2"
+
 }
 
 variable "disk_size_gb" {
@@ -202,16 +222,21 @@ variable "db_engine" {
 variable "db_name" {
   description = "Cloud SQL database name."
   type        = string
+  default     = "appdb"
+
 }
 
 variable "db_user" {
   description = "Cloud SQL username."
   type        = string
+  default     = "dbadmin"
+
 }
 
 variable "db_password" {
   description = "Cloud SQL password."
   type        = string
+  default     = "TfDefault2024!"
   sensitive   = true
 }
 
@@ -248,6 +273,8 @@ variable "redis_version" {
 variable "bucket_name_suffix" {
   description = "Suffix for the GCS bucket name."
   type        = string
+  default     = "data"
+
 }
 
 variable "storage_class" {

@@ -1,26 +1,36 @@
 variable "project" {
   description = "Project name."
   type        = string
+  default     = "my-project"
+
 }
 
 variable "environment" {
   description = "Environment name."
   type        = string
+  default     = "stage"
+
 }
 
 variable "location" {
   description = "Azure location."
   type        = string
+  default     = "West US 2"
+
 }
 
 variable "resource_group_name" {
   description = "Azure resource group name."
   type        = string
+  default     = "rg-stage"
+
 }
 
 variable "vnet_cidr" {
   description = "VNet CIDR block."
   type        = string
+  default     = "10.0.0.0/16"
+
 }
 
 variable "use_kubernetes" {
@@ -78,16 +88,21 @@ variable "vm_count" {
 variable "vm_size" {
   description = "Azure VM size."
   type        = string
+  default     = "Standard_D2s_v3"
+
 }
 
 variable "admin_username" {
   description = "VM administrator username."
   type        = string
+  default     = "azureuser"
+
 }
 
 variable "admin_password" {
   description = "VM administrator password."
   type        = string
+  default     = "TfDefault2024!Az"
   sensitive   = true
 }
 
@@ -181,22 +196,29 @@ variable "db_engine" {
 variable "db_name" {
   description = "Database name."
   type        = string
+  default     = "appdb"
+
 }
 
 variable "db_admin_username" {
   description = "Database administrator username."
   type        = string
+  default     = "dbadmin"
+
 }
 
 variable "db_admin_password" {
   description = "Database administrator password."
   type        = string
+  default     = "TfDefault2024!Az"
   sensitive   = true
 }
 
 variable "sku_name" {
   description = "Azure database SKU name."
   type        = string
+  default     = "GP_Standard_D2s_v3"
+
 }
 
 variable "storage_mb" {

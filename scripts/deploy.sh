@@ -50,6 +50,18 @@ prompt_number() {
   done
 }
 
+prompt_text() {
+  local -n _txt="$1"; local msg="$2"
+  while true; do
+    tty_out "${YELLOW}%s${RESET} " "$msg"; local value; tty_in value
+    value="$(printf '%s' "$value" | xargs)"
+    if [[ -n "$value" ]]; then
+      _txt="$value"; return 0
+    fi
+    tty_out "${RED}This value is required.${RESET}\n"
+  done
+}
+
 parse_multiselect() {
   # parse_multiselect ARRAY_NAMEREF "input" item1 item2 ...
   local -n _ms="$1"; local input="$2"; shift 2; local valid=("$@")
@@ -128,6 +140,12 @@ fi
 # ── Redis ─────────────────────────────────────────────────────────────────────
 ENABLE_REDIS=""; prompt_yesno ENABLE_REDIS "Deploy Redis?     [y/N]:" n
 
+# ── Cloud-specific credentials ──────────────────────────────────────────────────
+GCP_PROJECT_ID=""
+if printf '%s\n' "${SELECTED_CLOUDS[@]}" | grep -q "^gcp$"; then
+  prompt_text GCP_PROJECT_ID "GCP Project ID (required for GCP environments)"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 tty_out "\n${CYAN}${BOLD}┌────────────────────────────────────────────┐${RESET}\n"
 tty_out "${CYAN}${BOLD}│              Execution Summary             │${RESET}\n"
@@ -140,6 +158,7 @@ tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Count"        "$NODE_COUNT"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Database"     "$ENABLE_DATABASE"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "DB Engine"    "$DB_ENGINE"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Redis"        "$ENABLE_REDIS"
+[[ -n "$GCP_PROJECT_ID" ]] && tty_out "  %-14s : ${GREEN}%s${RESET}\n" "GCP Project" "$GCP_PROJECT_ID"
 tty_out "\n  Combinations:\n"
 for e in "${SELECTED_ENVS[@]}"; do
   for c in "${SELECTED_CLOUDS[@]}"; do
@@ -167,6 +186,8 @@ for env in "${SELECTED_ENVS[@]}"; do
     pushd "$ENV_DIR" >/dev/null
 
     TF_VARS=(
+      "-var=environment=$env"
+      "-var=project=terraform-$env"
       "-var=compute_type=$COMPUTE_TYPE"
       "-var=vm_count=$NODE_COUNT"
       "-var=node_count=$NODE_COUNT"
@@ -174,6 +195,10 @@ for env in "${SELECTED_ENVS[@]}"; do
       "-var=db_engine=$DB_ENGINE"
       "-var=enable_redis=$ENABLE_REDIS"
     )
+
+    if [[ "$cloud" == "gcp" && -n "$GCP_PROJECT_ID" ]]; then
+      TF_VARS+=("-var=project_id=$GCP_PROJECT_ID")
+    fi
 
     terraform init -input=false -no-color
     rc=0
