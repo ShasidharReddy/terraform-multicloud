@@ -91,6 +91,12 @@ variable "ami_id" {
   default     = null
 }
 
+variable "image_os" {
+  description = "AMI OS selection."
+  type        = string
+  default     = "amazon-linux"
+}
+
 variable "key_name" {
   description = "Optional EC2 key pair name."
   type        = string

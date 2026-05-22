@@ -1,6 +1,6 @@
 output "vm_ids" {
   description = "Azure VM identifiers."
-  value       = azurerm_linux_virtual_machine.this[*].id
+  value       = concat(azurerm_linux_virtual_machine.this[*].id, azurerm_windows_virtual_machine.this[*].id)
 }
 
 output "private_ips" {
@@ -10,5 +10,5 @@ output "private_ips" {
 
 output "vm_names" {
   description = "Azure VM names."
-  value       = azurerm_linux_virtual_machine.this[*].name
+  value       = concat(azurerm_linux_virtual_machine.this[*].name, azurerm_windows_virtual_machine.this[*].name)
 }

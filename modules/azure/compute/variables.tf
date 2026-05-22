@@ -39,6 +39,12 @@ variable "vm_size" {
   type        = string
 }
 
+variable "image_os" {
+  description = "Azure VM OS selection."
+  type        = string
+  default     = "ubuntu"
+}
+
 variable "admin_username" {
   description = "Administrator username."
   type        = string

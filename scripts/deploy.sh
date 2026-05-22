@@ -62,6 +62,31 @@ prompt_text() {
   done
 }
 
+prompt_image_os() {
+  local -n _ret="$1"; local cloud="$2"; local def="$3"; shift 3; local opts=("$@")
+  while true; do
+    tty_out "\n${YELLOW}Select OS for %s:${RESET}\n" "$cloud"
+    local i=1
+    for opt in "${opts[@]}"; do
+      tty_out "  ${CYAN}%d)${RESET} %s\n" "$i" "$opt"
+      ((i++))
+    done
+    tty_out "${BOLD}> ${RESET}"
+    local sel=""
+    IFS= read -r sel </dev/tty || true
+    sel="$(printf '%s' "${sel:-$def}" | tr '[:upper:]' '[:lower:]' | xargs)"
+    i=1
+    for opt in "${opts[@]}"; do
+      if [[ "$sel" == "$i" || "$sel" == "$(printf '%s' "$opt" | tr '[:upper:]' '[:lower:]')" ]]; then
+        _ret="$opt"
+        return 0
+      fi
+      ((i++))
+    done
+    tty_out "${RED}Invalid OS selection for %s.${RESET}\n" "$cloud"
+  done
+}
+
 parse_multiselect() {
   # parse_multiselect ARRAY_NAMEREF "input" item1 item2 ...
   local -n _ms="$1"; local input="$2"; shift 2; local valid=("$@")
@@ -126,6 +151,21 @@ fi
 COMPUTE_TYPE=""
 prompt_choice COMPUTE_TYPE "Select compute type:" vm kubernetes
 
+IMAGE_OS_AWS="amazon-linux"
+IMAGE_OS_AZURE="ubuntu"
+IMAGE_OS_GCP="ubuntu"
+if [[ "$COMPUTE_TYPE" == "vm" ]]; then
+  if printf '%s\n' "${SELECTED_CLOUDS[@]}" | grep -q '^aws$'; then
+    prompt_image_os IMAGE_OS_AWS "aws" "amazon-linux" ubuntu rhel amazon-linux debian
+  fi
+  if printf '%s\n' "${SELECTED_CLOUDS[@]}" | grep -q '^azure$'; then
+    prompt_image_os IMAGE_OS_AZURE "azure" "ubuntu" ubuntu rhel debian windows
+  fi
+  if printf '%s\n' "${SELECTED_CLOUDS[@]}" | grep -q '^gcp$'; then
+    prompt_image_os IMAGE_OS_GCP "gcp" "ubuntu" ubuntu rhel debian rocky centos
+  fi
+fi
+
 NODE_COUNT=2
 prompt_number NODE_COUNT "VM / node count" 1 50 2
 
@@ -140,11 +180,52 @@ fi
 # ── Redis ─────────────────────────────────────────────────────────────────────
 ENABLE_REDIS=""; prompt_yesno ENABLE_REDIS "Deploy Redis?     [y/N]:" n
 
-# ── Cloud-specific credentials ──────────────────────────────────────────────────
+# ── Cloud-specific credentials ────────────────────────────────────────────────
 GCP_PROJECT_ID=""
 if printf '%s\n' "${SELECTED_CLOUDS[@]}" | grep -q "^gcp$"; then
   prompt_text GCP_PROJECT_ID "GCP Project ID (required for GCP environments)"
 fi
+
+ALL_COMBOS=()
+for env in "${SELECTED_ENVS[@]}"; do
+  for cloud in "${SELECTED_CLOUDS[@]}"; do
+    ALL_COMBOS+=("$env/$cloud")
+  done
+done
+
+DESTROY_COMBOS=("${ALL_COMBOS[@]}")
+if [[ "$ACTION" == "destroy" ]]; then
+  tty_out "\n${YELLOW}Destroy combinations:${RESET}\n"
+  for idx in "${!DESTROY_COMBOS[@]}"; do
+    tty_out "  ${CYAN}%d)${RESET} %s\n" "$((idx + 1))" "${DESTROY_COMBOS[$idx]}"
+  done
+  tty_out "${YELLOW}Remove any from destroy list? (comma-separated numbers, or Enter to keep all):${RESET} "
+  REMOVE_INPUT=""
+  IFS= read -r REMOVE_INPUT </dev/tty || true
+  if [[ -n "$(printf '%s' "$REMOVE_INPUT" | tr -d '[:space:]')" ]]; then
+    declare -A REMOVE_MAP=()
+    IFS=',' read -r -a REMOVE_ITEMS <<< "$REMOVE_INPUT"
+    for item in "${REMOVE_ITEMS[@]}"; do
+      item="$(printf '%s' "$item" | xargs)"
+      if [[ ! "$item" =~ ^[0-9]+$ ]] || (( item < 1 || item > ${#DESTROY_COMBOS[@]} )); then
+        tty_out "${RED}Invalid destroy selection: %s${RESET}\n" "$item"
+        exit 1
+      fi
+      REMOVE_MAP["$item"]=1
+    done
+
+    FILTERED_DESTROY_COMBOS=()
+    for idx in "${!DESTROY_COMBOS[@]}"; do
+      num=$((idx + 1))
+      [[ -z "${REMOVE_MAP[$num]:-}" ]] && FILTERED_DESTROY_COMBOS+=("${DESTROY_COMBOS[$idx]}")
+    done
+    DESTROY_COMBOS=("${FILTERED_DESTROY_COMBOS[@]}")
+    (( ${#DESTROY_COMBOS[@]} > 0 )) || { tty_out "${RED}Destroy list cannot be empty.${RESET}\n"; exit 1; }
+  fi
+fi
+
+SUMMARY_COMBOS=("${ALL_COMBOS[@]}")
+[[ "$ACTION" == "destroy" ]] && SUMMARY_COMBOS=("${DESTROY_COMBOS[@]}")
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 tty_out "\n${CYAN}${BOLD}┌────────────────────────────────────────────┐${RESET}\n"
@@ -154,16 +235,17 @@ tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Environments" "${SELECTED_ENVS[*]}"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Clouds"       "${SELECTED_CLOUDS[*]}"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Action"       "$ACTION"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Compute"      "$COMPUTE_TYPE"
+[[ "$COMPUTE_TYPE" == "vm" && " ${SELECTED_CLOUDS[*]} " == *" aws "* ]] && tty_out "  %-14s : ${GREEN}%s${RESET}\n" "AWS OS"       "$IMAGE_OS_AWS"
+[[ "$COMPUTE_TYPE" == "vm" && " ${SELECTED_CLOUDS[*]} " == *" azure "* ]] && tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Azure OS"     "$IMAGE_OS_AZURE"
+[[ "$COMPUTE_TYPE" == "vm" && " ${SELECTED_CLOUDS[*]} " == *" gcp "* ]] && tty_out "  %-14s : ${GREEN}%s${RESET}\n" "GCP OS"       "$IMAGE_OS_GCP"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Count"        "$NODE_COUNT"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Database"     "$ENABLE_DATABASE"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "DB Engine"    "$DB_ENGINE"
 tty_out "  %-14s : ${GREEN}%s${RESET}\n" "Redis"        "$ENABLE_REDIS"
 [[ -n "$GCP_PROJECT_ID" ]] && tty_out "  %-14s : ${GREEN}%s${RESET}\n" "GCP Project" "$GCP_PROJECT_ID"
 tty_out "\n  Combinations:\n"
-for e in "${SELECTED_ENVS[@]}"; do
-  for c in "${SELECTED_CLOUDS[@]}"; do
-    tty_out "    ${CYAN}•${RESET} environments/%s/%s\n" "$e" "$c"
-  done
+for combo in "${SUMMARY_COMBOS[@]}"; do
+  tty_out "    ${CYAN}•${RESET} environments/%s\n" "$combo"
 done
 
 CONFIRM=""; prompt_yesno CONFIRM "Proceed? [Y/n]:" y
@@ -224,7 +306,7 @@ show_deployment_summary() {
   tty_out "${CYAN}${BOLD}  📋  Deployed Resources — %s${RESET}\n" "$label"
   tty_out "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
 
-  local _py; _py=$(mktemp /tmp/tf_summary_XXXXXX.py)
+  local _py="$PROJECT_ROOT/logs/tf_summary_${$}.py"
   cat > "$_py" << 'PYEOF'
 import sys, json
 
@@ -311,81 +393,105 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 FAILED_COMBOS=()
 
-for env in "${SELECTED_ENVS[@]}"; do
-  for cloud in "${SELECTED_CLOUDS[@]}"; do
-    ENV_DIR="$PROJECT_ROOT/environments/$env/$cloud"
-    if [[ ! -d "$ENV_DIR" ]]; then
-      tty_out "${YELLOW}⚠️   Skipping %s/%s — directory not found${RESET}\n" "$env" "$cloud"
-      continue
-    fi
+run_env_cloud() {
+  local env="$1"
+  local cloud="$2"
+  local ENV_DIR="$PROJECT_ROOT/environments/$env/$cloud"
+  local image_os=""
+  local rc=0
+  local _did_apply=false
 
-    tty_out "\n${CYAN}${BOLD}══> [%s/%s] %s${RESET}\n" "$env" "$cloud" "$ACTION"
-    pushd "$ENV_DIR" >/dev/null
+  case "$cloud" in
+    aws) image_os="$IMAGE_OS_AWS" ;;
+    azure) image_os="$IMAGE_OS_AZURE" ;;
+    gcp) image_os="$IMAGE_OS_GCP" ;;
+  esac
 
-    TF_VARS=(
-      "-var=environment=$env"
-      "-var=project=terraform-$env"
-      "-var=compute_type=$COMPUTE_TYPE"
-      "-var=vm_count=$NODE_COUNT"
-      "-var=node_count=$NODE_COUNT"
-      "-var=enable_database=$ENABLE_DATABASE"
-      "-var=db_engine=$DB_ENGINE"
-      "-var=enable_redis=$ENABLE_REDIS"
-    )
+  if [[ ! -d "$ENV_DIR" ]]; then
+    tty_out "${YELLOW}⚠️   Skipping %s/%s — directory not found${RESET}\n" "$env" "$cloud"
+    return 0
+  fi
 
-    if [[ "$cloud" == "gcp" && -n "$GCP_PROJECT_ID" ]]; then
-      TF_VARS+=("-var=project_id=$GCP_PROJECT_ID")
-    fi
+  tty_out "\n${CYAN}${BOLD}══> [%s/%s] %s${RESET}\n" "$env" "$cloud" "$ACTION"
+  pushd "$ENV_DIR" >/dev/null
 
-    terraform init -input=false -no-color -upgrade=false \
-      -plugin-dir="${HOME}/.terraform.d/plugin-cache" \
-      || terraform init -input=false -no-color -upgrade=false
-    rc=0
-    _did_apply=false
-    case "$ACTION" in
-      plan)
-        terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
-        if (( rc == 0 )); then
-          # Flush any buffered TTY input, then block for real user answer
-          while IFS= read -r -t 0.05 _fl </dev/tty 2>/dev/null; do :; done
-          tty_out "\n${GREEN}${BOLD}  ✅ Plan succeeded — apply now?${RESET} ${YELLOW}[y/N]:${RESET} "
-          _r=""
-          IFS= read -r _r </dev/tty || true
-          _r="$(printf '%s' "${_r:-n}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-          if [[ "$_r" == "y" || "$_r" == "yes" ]]; then
-            tty_out "${CYAN}  → Applying...${RESET}\n"
-            terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
-            _did_apply=true
-          else
-            tty_out "${YELLOW}  → Skipped apply.${RESET}\n"
-            tty_out "${YELLOW}  Plan saved at: ${BOLD}%s/tfplan${RESET}\n" "$ENV_DIR"
-            tty_out "${YELLOW}  To apply later run:${RESET}\n"
-            tty_out "${CYAN}    cd %s && terraform apply tfplan${RESET}\n" "$ENV_DIR"
-          fi
-        fi
-        ;;
-      apply)
-        terraform plan  -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
-        if (( rc == 0 )); then
+  local -a TF_VARS=(
+    "-var=environment=$env"
+    "-var=project=terraform-$env"
+    "-var=compute_type=$COMPUTE_TYPE"
+    "-var=vm_count=$NODE_COUNT"
+    "-var=node_count=$NODE_COUNT"
+    "-var=enable_database=$ENABLE_DATABASE"
+    "-var=db_engine=$DB_ENGINE"
+    "-var=enable_redis=$ENABLE_REDIS"
+  )
+
+  if [[ "$COMPUTE_TYPE" == "vm" && -n "$image_os" ]]; then
+    TF_VARS+=("-var=image_os=$image_os")
+  fi
+
+  if [[ "$cloud" == "gcp" && -n "$GCP_PROJECT_ID" ]]; then
+    TF_VARS+=("-var=project_id=$GCP_PROJECT_ID")
+  fi
+
+  terraform init -input=false -no-color -upgrade=false \
+    -plugin-dir="${HOME}/.terraform.d/plugin-cache" \
+    || terraform init -input=false -no-color -upgrade=false
+  rc=0
+  case "$ACTION" in
+    plan)
+      terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
+      if (( rc == 0 )); then
+        while IFS= read -r -t 0.05 _fl </dev/tty 2>/dev/null; do :; done
+        tty_out "\n${GREEN}${BOLD}  ✅ Plan succeeded — apply now?${RESET} ${YELLOW}[y/N]:${RESET} "
+        _r=""
+        IFS= read -r _r </dev/tty || true
+        _r="$(printf '%s' "${_r:-n}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        if [[ "$_r" == "y" || "$_r" == "yes" ]]; then
+          tty_out "${CYAN}  → Applying...${RESET}\n"
           terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
           _did_apply=true
+        else
+          tty_out "${YELLOW}  → Skipped apply.${RESET}\n"
+          tty_out "${YELLOW}  Plan saved at: ${BOLD}%s/tfplan${RESET}\n" "$ENV_DIR"
+          tty_out "${YELLOW}  To apply later run:${RESET}\n"
+          tty_out "${CYAN}    cd %s && terraform apply tfplan${RESET}\n" "$ENV_DIR"
         fi
-        ;;
-      destroy)
-        terraform destroy -input=false -no-color -auto-approve "${TF_VARS[@]}" || rc=$?
-        ;;
-    esac
+      fi
+      ;;
+    apply)
+      terraform plan -input=false -no-color "${TF_VARS[@]}" -out=tfplan || rc=$?
+      if (( rc == 0 )); then
+        terraform apply -input=false -no-color -auto-approve tfplan || rc=$?
+        _did_apply=true
+      fi
+      ;;
+    destroy)
+      terraform destroy -input=false -no-color -auto-approve "${TF_VARS[@]}" || rc=$?
+      ;;
+  esac
 
-    popd >/dev/null
-    if (( rc == 0 )); then
-      tty_out "${GREEN}✅  %s/%s — %s complete${RESET}\n" "$env" "$cloud" "$ACTION"
-      [[ "$_did_apply" == "true" ]] && show_deployment_summary "$env/$cloud" "$ENV_DIR"
-    else
-      tty_out "${RED}❌  %s/%s — %s FAILED (exit %d)${RESET}\n" "$env" "$cloud" "$ACTION" "$rc"
-      FAILED_COMBOS+=("$env/$cloud")
-    fi
+  popd >/dev/null
+  if (( rc == 0 )); then
+    tty_out "${GREEN}✅  %s/%s — %s complete${RESET}\n" "$env" "$cloud" "$ACTION"
+    [[ "$_did_apply" == "true" ]] && show_deployment_summary "$env/$cloud" "$ENV_DIR"
+  else
+    tty_out "${RED}❌  %s/%s — %s FAILED (exit %d)${RESET}\n" "$env" "$cloud" "$ACTION" "$rc"
+    FAILED_COMBOS+=("$env/$cloud")
+  fi
+}
+
+if [[ "$ACTION" == "destroy" ]]; then
+  for combo in "${DESTROY_COMBOS[@]}"; do
+    run_env_cloud "${combo%%/*}" "${combo##*/}"
   done
-done
+else
+  for env in "${SELECTED_ENVS[@]}"; do
+    for cloud in "${SELECTED_CLOUDS[@]}"; do
+      run_env_cloud "$env" "$cloud"
+    done
+  done
+fi
 
 if (( ${#FAILED_COMBOS[@]} > 0 )); then
   tty_out "\n${RED}${BOLD}Failed: %s${RESET}\n" "${FAILED_COMBOS[*]}"

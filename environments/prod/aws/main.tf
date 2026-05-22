@@ -74,6 +74,7 @@ module "compute" {
   vm_count                      = var.vm_count
   instance_type                 = var.instance_type
   ami_id                        = var.ami_id
+  image_os                      = var.image_os
   key_name                      = var.key_name
   public_key                    = var.vm_public_key
   additional_security_group_ids = [module.security_groups.app_sg_id]

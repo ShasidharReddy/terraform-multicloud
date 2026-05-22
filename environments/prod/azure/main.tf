@@ -59,6 +59,7 @@ module "compute" {
   subnet_id           = module.vnet.private_subnet_id
   vm_count            = var.vm_count
   vm_size             = var.vm_size
+  image_os            = var.image_os
   admin_username      = var.admin_username
   admin_password      = var.admin_password
   assign_public_ip    = var.assign_public_ip

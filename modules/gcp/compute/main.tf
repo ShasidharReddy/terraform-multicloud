@@ -11,6 +11,14 @@ terraform {
 
 locals {
   instance_tags = ["ssh", "${var.project}-${var.environment}"]
+  image_map = {
+    ubuntu = "ubuntu-os-cloud/ubuntu-2204-lts"
+    rhel   = "rhel-cloud/rhel-8"
+    debian = "debian-cloud/debian-11"
+    rocky  = "rocky-linux-cloud/rocky-linux-9"
+    centos = "centos-cloud/centos-stream-9"
+  }
+  effective_image = coalesce(var.image, lookup(local.image_map, lower(var.image_os), "ubuntu-os-cloud/ubuntu-2204-lts"))
 }
 
 resource "google_compute_firewall" "ssh" {
@@ -38,7 +46,7 @@ resource "google_compute_instance" "this" {
 
   boot_disk {
     initialize_params {
-      image = var.image
+      image = local.effective_image
       size  = var.disk_size_gb
       type  = "pd-balanced"
     }

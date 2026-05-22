@@ -67,6 +67,7 @@ module "compute" {
   machine_type      = var.machine_type
   disk_size_gb      = var.disk_size_gb
   image             = var.image
+  image_os          = var.image_os
   tags              = local.common_tags
 }
 

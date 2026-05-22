@@ -58,7 +58,13 @@ variable "disk_size_gb" {
 variable "image" {
   description = "Boot image."
   type        = string
-  default     = "debian-cloud/debian-11"
+  default     = ""
+}
+
+variable "image_os" {
+  description = "Boot image OS selection."
+  type        = string
+  default     = "ubuntu"
 }
 
 variable "tags" {
