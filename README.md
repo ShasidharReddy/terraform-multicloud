@@ -226,6 +226,135 @@ terraform-multicloud/
 | stage | aws / azure / gcp | 3 | t3.medium / Standard_B2ms / e2-medium | db.t3.small / General Purpose / db-custom-2-7680 | yes | 2 |
 | prod | aws / azure / gcp | 5 | t3.large / Standard_D4s_v5 / e2-standard-2 | db.t3.medium / General Purpose / db-custom-4-15360 | yes | 2 |
 
+## Terraform Workspaces
+
+The deploy and destroy scripts use **Terraform workspaces** to isolate state per environment and cloud combination. Each `env/cloud` pair gets its own workspace (e.g., `dev-aws`, `prod-gcp`), so resources never collide across environments.
+
+### Workspace Architecture
+```mermaid
+flowchart TB
+  subgraph Workspaces["Terraform Workspaces"]
+    direction LR
+    dev_aws["dev-aws"]
+    dev_azure["dev-azure"]
+    dev_gcp["dev-gcp"]
+    qa_aws["qa-aws"]
+    prod_aws["prod-aws"]
+    prod_gcp["prod-gcp"]
+  end
+
+  dev_aws --> state_da["dev-aws.tfstate"]
+  dev_azure --> state_daz["dev-azure.tfstate"]
+  dev_gcp --> state_dg["dev-gcp.tfstate"]
+  qa_aws --> state_qa["qa-aws.tfstate"]
+  prod_aws --> state_pa["prod-aws.tfstate"]
+  prod_gcp --> state_pg["prod-gcp.tfstate"]
+```
+
+### How It Works
+1. When you run `make deploy` or `./scripts/deploy.sh`, the script automatically creates or selects the workspace named `<env>-<cloud>` (e.g., `dev-aws`).
+2. Each workspace maintains its own independent state file — dev resources are fully isolated from prod.
+3. The destroy script selects the matching workspace before tearing down resources.
+4. `terraform.workspace` is available in `.tf` files for dynamic naming (e.g., tagging resources with the workspace name).
+
+### Step-by-Step: Working with Workspaces
+
+#### Using the Interactive Script (Recommended)
+```bash
+# The script handles workspace creation/selection automatically
+make deploy
+# Select environment: dev → Select cloud: aws → workspace "dev-aws" is created/selected
+```
+
+#### Manual Workspace Workflow
+```bash
+# Step 1: Navigate to environment directory
+cd environments/dev/aws
+
+# Step 2: Initialize Terraform
+terraform init
+
+# Step 3: Create a workspace (first time only)
+terraform workspace new dev-aws
+
+# Step 4: Select the workspace (subsequent runs)
+terraform workspace select dev-aws
+
+# Step 5: Plan and apply
+terraform plan -var="vm_count=2" -var="compute_type=vm"
+terraform apply -var="vm_count=2" -var="compute_type=vm"
+
+# Step 6: Verify active workspace
+terraform workspace show
+# Output: dev-aws
+
+# Step 7: List all workspaces
+terraform workspace list
+# Output:
+#   default
+# * dev-aws
+#   prod-aws
+#   dev-gcp
+```
+
+#### Switching Between Environments
+```bash
+# Deploy to dev
+cd environments/dev/aws
+terraform workspace select dev-aws
+terraform apply -var="vm_count=1" -var="compute_type=vm"
+
+# Switch to prod (same directory structure, different workspace)
+cd environments/prod/aws
+terraform workspace select prod-aws
+terraform apply -var="vm_count=5" -var="compute_type=vm"
+
+# Check what's deployed in each
+terraform workspace select dev-aws && terraform state list
+terraform workspace select prod-aws && terraform state list
+```
+
+#### Destroying a Specific Workspace
+```bash
+cd environments/dev/aws
+terraform workspace select dev-aws
+terraform destroy -auto-approve
+
+# Optionally delete the workspace after destroy
+terraform workspace select default
+terraform workspace delete dev-aws
+```
+
+### Workspace Naming Convention
+| Environment | Cloud | Workspace Name |
+|---|---|---|
+| dev | AWS | `dev-aws` |
+| dev | Azure | `dev-azure` |
+| dev | GCP | `dev-gcp` |
+| qa | AWS | `qa-aws` |
+| qa | Azure | `qa-azure` |
+| qa | GCP | `qa-gcp` |
+| stage | AWS | `stage-aws` |
+| stage | Azure | `stage-azure` |
+| stage | GCP | `stage-gcp` |
+| prod | AWS | `prod-aws` |
+| prod | Azure | `prod-azure` |
+| prod | GCP | `prod-gcp` |
+
+### Best Practices
+- **Never deploy to `default` workspace** — always use environment-specific workspaces
+- **Use remote backends** (S3, GCS, Azure Blob) with workspaces for team collaboration — each workspace gets a separate state key
+- **Reference `terraform.workspace`** in resource tags for traceability:
+  ```hcl
+  locals {
+    common_tags = {
+      environment = terraform.workspace
+      managed_by  = "terraform"
+    }
+  }
+  ```
+- **List workspaces** before deploying to verify you're targeting the right environment
+
 ## Deployment Guide
 
 ### Option A: Interactive Deploy (Recommended)

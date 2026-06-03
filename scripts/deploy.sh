@@ -437,6 +437,18 @@ run_env_cloud() {
   terraform init -input=false -no-color -upgrade=false \
     -plugin-dir="${HOME}/.terraform.d/plugin-cache" \
     || terraform init -input=false -no-color -upgrade=false
+
+  # ── Workspace Management ────────────────────────────────────────────────
+  local ws_name="${env}-${cloud}"
+  local existing_ws
+  existing_ws="$(terraform workspace list 2>/dev/null | sed 's/^[ *]*//' | tr -d '[:space:]'  | tr '\n' ' ')"
+  if terraform workspace list 2>/dev/null | grep -qw "$ws_name"; then
+    terraform workspace select "$ws_name" >/dev/null 2>&1
+    tty_out "${CYAN}  📂 Workspace: ${BOLD}%s${RESET}\n" "$ws_name"
+  else
+    terraform workspace new "$ws_name" >/dev/null 2>&1
+    tty_out "${GREEN}  📂 Created workspace: ${BOLD}%s${RESET}\n" "$ws_name"
+  fi
   rc=0
   case "$ACTION" in
     plan)
