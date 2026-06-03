@@ -1,27 +1,132 @@
+<div align="center">
+<pre>
+┌──────────────────────────────────────────────┐
+│                                              │
+│      SHASI-TERRAFORM-MULTICLOUD              │
+│      Multi-Cloud Infrastructure as Code      │
+│                                              │
+│   ┌─────┐   ┌─────┐   ┌─────┐               │
+│   │ AWS │   │Azure│   │ GCP │               │
+│   └──┬──┘   └──┬──┘   └──┬──┘               │
+│      └─────────┼─────────┘                   │
+│           ┌────┴────┐                        │
+│           │Terraform│                        │
+│           └─────────┘                        │
+│                                              │
+│   Production-Grade Multi-Cloud IaC           │
+│                                              │
+└──────────────────────────────────────────────┘
+</pre>
+</div>
+
 # 🌍 Terraform Multi-Cloud Infrastructure
 
 ## Overview
 Terraform scaffolding for AWS, Azure, and GCP across `dev`, `qa`, `stage`, and `prod`. Each stack can deploy VMs, Kubernetes, databases, storage, networking, and optional bastion access using reusable modules.
 
 ## Architecture
-```text
-                         ┌────────────────────────────────────────────────────────┐
-                         │                Terraform Environments                 │
-                         │        dev | qa | stage | prod per cloud stack       │
-                         └────────────────────────────────────────────────────────┘
-                                       │
-          ┌────────────────────────────┼────────────────────────────┐
-          │                            │                            │
-          ▼                            ▼                            ▼
-   ┌───────────────┐            ┌───────────────┐            ┌───────────────┐
-   │      AWS      │            │     Azure     │            │      GCP      │
-   │ VPC + subnets │            │ VNet + subnets│            │ VPC + subnets │
-   │ NACLs + S3 EP │            │ NSGs + route  │            │ FW + NAT + RT │
-   │ Bastion       │            │ Bastion       │            │ Bastion       │
-   │ EC2 or EKS    │            │ VM or AKS     │            │ VM or GKE     │
-   │ RDS/Aurora    │            │ PG/MySQL/SQL  │            │ Cloud SQL     │
-   │ S3            │            │ Blob Storage  │            │ GCS           │
-   └───────────────┘            └───────────────┘            └───────────────┘
+
+### Overall Architecture
+```mermaid
+flowchart TB
+  devs["Engineers and CI"] --> envs["Environment stacks"]
+  envs --> envSet["dev | qa | stage | prod"]
+
+  envSet --> awsEnv["AWS environments"]
+  envSet --> azEnv["Azure environments"]
+  envSet --> gcpEnv["GCP environments"]
+
+  subgraph AWS["AWS stack"]
+    awsEnv --> awsModules["vpc, security-groups, bastion, compute, eks, database, redis, storage"]
+  end
+
+  subgraph Azure["Azure stack"]
+    azEnv --> azModules["vnet, bastion, compute, aks, database, redis, storage"]
+  end
+
+  subgraph GCP["GCP stack"]
+    gcpEnv --> gcpModules["vpc, bastion, compute, gke, database, redis, storage"]
+  end
+
+  awsModules --> backends["Backend templates"]
+  azModules --> backends
+  gcpModules --> backends
+  backends --> state["Remote Terraform state per cloud and environment"]
+```
+
+### Deployment Flow
+```mermaid
+flowchart LR
+  commit["Commit or PR"] --> jenkins["Jenkinsfile / CI pipeline"]
+  jenkins --> checks["fmt + validate + security checks"]
+  checks --> plan["scripts/deploy.sh or terraform plan"]
+  plan --> approval{"Manual approval for apply?"}
+  approval -- yes --> apply["terraform apply"]
+  approval -- no --> stop["Plan only"]
+  apply --> backend["Remote state updated"]
+  backend --> outputs["Environment outputs and access commands"]
+```
+
+### Module Dependency Graph
+```mermaid
+flowchart LR
+  subgraph AWS["AWS"]
+    aws_vpc["vpc"] --> aws_bastion["bastion"]
+    aws_vpc --> aws_sg["security-groups"]
+    aws_vpc --> aws_compute["compute"]
+    aws_vpc --> aws_eks["eks"]
+    aws_vpc --> aws_db["database"]
+    aws_vpc --> aws_redis["redis"]
+    aws_sg --> aws_compute
+    aws_sg --> aws_eks
+    aws_sg --> aws_db
+    aws_storage["storage"]
+  end
+
+  subgraph Azure["Azure"]
+    az_vnet["vnet"] --> az_bastion["bastion"]
+    az_vnet --> az_compute["compute"]
+    az_vnet --> az_aks["aks"]
+    az_vnet --> az_db["database"]
+    az_vnet --> az_redis["redis"]
+    az_storage["storage"]
+  end
+
+  subgraph GCP["GCP"]
+    gcp_vpc["vpc"] --> gcp_bastion["bastion"]
+    gcp_vpc --> gcp_compute["compute"]
+    gcp_vpc --> gcp_gke["gke"]
+    gcp_vpc --> gcp_db["database"]
+    gcp_vpc --> gcp_redis["redis"]
+    gcp_storage["storage"]
+  end
+```
+
+### Environment Promotion Flow
+```mermaid
+flowchart LR
+  dev["dev"] --> qa["qa"]
+  qa --> stage["stage"]
+  stage --> prod["prod"]
+
+  dev -. smoke tests .-> qa
+  qa -. integration validation .-> stage
+  stage -. release approval .-> prod
+```
+
+### Backend State Management
+```mermaid
+flowchart TB
+  local["Local backend by default"] --> bootstrap["scripts/bootstrap-backend.sh"]
+  bootstrap --> templates["backend-configs/*.tf.tpl"]
+
+  templates --> awsState["AWS: S3 bucket + DynamoDB lock table"]
+  templates --> azState["Azure: Storage account + blob container"]
+  templates --> gcpState["GCP: GCS bucket with versioning"]
+
+  awsState --> tfstate["terraform.tfstate per env/cloud"]
+  azState --> tfstate
+  gcpState --> tfstate
 ```
 
 ## Prerequisites
@@ -46,7 +151,7 @@ gcloud config set project <PROJECT_ID>
 
 ## Quick Start
 ```bash
-cd ~/Git-Infoblox/REPOS/terraform-multicloud
+cd ~/terraform-multicloud
 terraform fmt -recursive
 make deploy
 ```
@@ -63,13 +168,14 @@ terraform-multicloud/
 │   │   ├── aws/    # env-specific AWS stack
 │   │   ├── azure/  # env-specific Azure stack
 │   │   └── gcp/    # env-specific GCP stack
-├── logs/           # deploy logs
+├── logs/           # created at runtime by helper scripts (optional)
 ├── modules/
 │   ├── aws/
 │   │   ├── bastion/
 │   │   ├── compute/
 │   │   ├── database/
 │   │   ├── eks/
+│   │   ├── redis/
 │   │   ├── security-groups/
 │   │   ├── storage/
 │   │   └── vpc/
@@ -78,6 +184,7 @@ terraform-multicloud/
 │   │   ├── bastion/
 │   │   ├── compute/
 │   │   ├── database/
+│   │   ├── redis/
 │   │   ├── storage/
 │   │   └── vnet/
 │   └── gcp/
@@ -85,18 +192,31 @@ terraform-multicloud/
 │       ├── compute/
 │       ├── database/
 │       ├── gke/
+│       ├── redis/
 │       ├── storage/
 │       └── vpc/
 ├── scripts/
 │   ├── bootstrap-backend.sh
+│   ├── bump-version.sh
+│   ├── ci-check.sh
 │   ├── deploy.sh
 │   ├── destroy.sh
 │   └── validate.sh
 ├── versions/
-│   └── CHANGELOG.md
+│   ├── CHANGELOG.md
+│   └── VERSION
+├── Jenkinsfile
 ├── Makefile
+├── sonar-project.properties
 └── README.md
 ```
+
+## Module Documentation
+| Cloud | Modules |
+|---|---|
+| AWS | [bastion](modules/aws/bastion/README.md), [compute](modules/aws/compute/README.md), [database](modules/aws/database/README.md), [eks](modules/aws/eks/README.md), [redis](modules/aws/redis/README.md), [security-groups](modules/aws/security-groups/README.md), [storage](modules/aws/storage/README.md), [vpc](modules/aws/vpc/README.md) |
+| Azure | [aks](modules/azure/aks/README.md), [bastion](modules/azure/bastion/README.md), [compute](modules/azure/compute/README.md), [database](modules/azure/database/README.md), [redis](modules/azure/redis/README.md), [storage](modules/azure/storage/README.md), [vnet](modules/azure/vnet/README.md) |
+| GCP | [bastion](modules/gcp/bastion/README.md), [compute](modules/gcp/compute/README.md), [database](modules/gcp/database/README.md), [gke](modules/gcp/gke/README.md), [redis](modules/gcp/redis/README.md), [storage](modules/gcp/storage/README.md), [vpc](modules/gcp/vpc/README.md) |
 
 ## Environment Defaults
 | env | clouds | vm_count | instance_size | db_class | multi_az | k8s_nodes |
@@ -146,33 +266,36 @@ terraform apply
 ### AWS
 | Resource | Module | Variable |
 |---|---|---|
-| VPC + Subnets + NACLs | `vpc` | `vpc_cidr` |
-| Security Groups | `security-groups` | - |
-| EC2 Instances | `compute` | `vm_count` (1-50) |
-| EKS Cluster | `eks` | `node_count` (1-50) |
-| RDS / Aurora | `database` | `db_engine` |
-| S3 Bucket | `storage` | `bucket_name_suffix` |
-| Bastion Host | `bastion` | `create_bastion=true` |
+| VPC + subnets + NACLs | [`vpc`](modules/aws/vpc/README.md) | `vpc_cidr` |
+| Security groups | [`security-groups`](modules/aws/security-groups/README.md) | - |
+| Bastion host | [`bastion`](modules/aws/bastion/README.md) | `create_bastion=true` |
+| EC2 instances | [`compute`](modules/aws/compute/README.md) | `vm_count` (1-50) |
+| EKS cluster | [`eks`](modules/aws/eks/README.md) | `node_count` (1-50) |
+| RDS / Aurora | [`database`](modules/aws/database/README.md) | `db_engine` |
+| ElastiCache Redis | [`redis`](modules/aws/redis/README.md) | `enable_redis=true` |
+| S3 bucket | [`storage`](modules/aws/storage/README.md) | `bucket_name_suffix` |
 
 ### Azure
 | Resource | Module | Variable |
 |---|---|---|
-| VNet + subnets + route table | `vnet` | `vnet_cidr` |
-| Linux VMs | `compute` | `vm_count` (1-50) |
-| AKS Cluster | `aks` | `node_count` (1-50) |
-| PostgreSQL / MySQL / Azure SQL | `database` | `db_engine` |
-| Storage Account + container | `storage` | `account_tier` |
-| Bastion VM | `bastion` | `create_bastion=true` |
+| VNet + subnets + route table | [`vnet`](modules/azure/vnet/README.md) | `vnet_cidr` |
+| Bastion VM | [`bastion`](modules/azure/bastion/README.md) | `create_bastion=true` |
+| Linux / Windows VMs | [`compute`](modules/azure/compute/README.md) | `vm_count` (1-50) |
+| AKS cluster | [`aks`](modules/azure/aks/README.md) | `node_count` (1-50) |
+| PostgreSQL / MySQL / Azure SQL | [`database`](modules/azure/database/README.md) | `db_engine` |
+| Azure Cache for Redis | [`redis`](modules/azure/redis/README.md) | `enable_redis=true` |
+| Storage account + container | [`storage`](modules/azure/storage/README.md) | `account_tier` |
 
 ### GCP
 | Resource | Module | Variable |
 |---|---|---|
-| VPC + subnets + firewalls + NAT | `vpc` | `vpc_cidr` |
-| Compute Engine VMs | `compute` | `vm_count` (1-50) |
-| GKE Cluster | `gke` | `node_count` (1-50) |
-| Cloud SQL | `database` | `db_engine` |
-| GCS Bucket | `storage` | `bucket_name_suffix` |
-| Bastion VM | `bastion` | `create_bastion=true` |
+| VPC + subnets + firewalls + NAT | [`vpc`](modules/gcp/vpc/README.md) | `vpc_cidr` |
+| Bastion VM | [`bastion`](modules/gcp/bastion/README.md) | `create_bastion=true` |
+| Compute Engine VMs | [`compute`](modules/gcp/compute/README.md) | `vm_count` (1-50) |
+| GKE cluster | [`gke`](modules/gcp/gke/README.md) | `node_count` (1-50) |
+| Cloud SQL | [`database`](modules/gcp/database/README.md) | `db_engine` |
+| Memorystore for Redis | [`redis`](modules/gcp/redis/README.md) | `enable_redis=true` |
+| GCS bucket | [`storage`](modules/gcp/storage/README.md) | `bucket_name_suffix` |
 
 ## Database Engine Selection
 | Cloud | Engines |
@@ -249,6 +372,16 @@ make tag version=v1.2.0
 | `make fmt` | Run `terraform fmt -recursive` |
 | `make docs` | Placeholder docs target |
 | `make tag version=vX.Y.Z` | Create annotated tag |
+
+## 📚 Official Documentation
+- [Terraform Documentation](https://developer.hashicorp.com/terraform/docs)
+- [Terraform Modules Language Reference](https://developer.hashicorp.com/terraform/language/modules)
+- [AWS Provider Documentation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+- [AzureRM Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+- [Google Provider Documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
+- [AWS Documentation](https://docs.aws.amazon.com/)
+- [Azure Documentation](https://learn.microsoft.com/en-us/azure/)
+- [Google Cloud Documentation](https://cloud.google.com/docs)
 
 ## Troubleshooting
 - **Aurora selected with non-AWS clouds**: use AWS only, or switch to PostgreSQL/MySQL.
