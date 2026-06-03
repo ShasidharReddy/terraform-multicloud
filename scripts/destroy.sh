@@ -189,6 +189,16 @@ run_destroy() {
   (
     cd "$dir"
     terraform init -backend=false -input=false
+
+    # ── Workspace Management ──
+    local ws_name="${env}-${cloud}"
+    if terraform workspace list 2>/dev/null | grep -qw "$ws_name"; then
+      terraform workspace select "$ws_name" >/dev/null 2>&1
+      log "${CYAN}  📂 Workspace: $ws_name${RESET}"
+    else
+      log "${YELLOW}  ⚠ Workspace '$ws_name' not found — using current workspace${RESET}"
+    fi
+
     terraform destroy -input=false -var="vm_count=$vm_count" -auto-approve
   ) 2>&1 | tee -a "$LOG_FILE" || {
     FAILED_COMBINATIONS+=("$env/$cloud")
